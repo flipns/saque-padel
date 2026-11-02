@@ -1,0 +1,17 @@
+.shell { min-height: 100dvh; background: var(--mist); }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 2rem; padding: .8rem clamp(1rem, 3vw, 2rem); background: var(--navy); color: var(--white); }
+.brand { display: flex; align-items: center; gap: .8rem; text-decoration: none; font-weight: 800; }
+.brand img { width: 80px; height: auto; }
+.nav { display: flex; gap: 1.25rem; flex: 1; }
+.nav a { text-decoration: none; font-weight: 600; color: var(--blue-soft); }
+.nav a:hover { color: var(--white); }
+.user { display: flex; align-items: center; gap: .75rem; font-size: var(--step--1); color: var(--blue-soft); }
+.user button { font: inherit; font-weight: 700; color: var(--white); background: none; border: 1px solid rgba(255,255,255,.4); border-radius: 999px; padding: .3rem .9rem; cursor: pointer; }
+.main { padding-block: 2rem 4rem; }
+.main h1 { font-size: var(--step-2); font-weight: 900; text-transform: uppercase; margin-bottom: .5rem; }
+.panel { background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.5rem; margin-top: 1.5rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+.stat { background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.1rem 1.25rem; }
+.stat b { display: block; font-size: var(--step-2); font-weight: 900; }
+.stat span { color: var(--ink-soft); }
+.stat small { display: block; margin-top: .35rem; color: var(--ink-soft); }
