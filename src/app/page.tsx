@@ -64,12 +64,12 @@ export default async function Home() {
           <li>
             <span className={s.when}>Noviembre a enero</span>
             <h3 className="title">Fase de nivelación</h3>
-            <p>Tres partidos al mes contra rivales distintos. Una clasificación por categoría suma los puntos de los tres meses y, al cerrar enero, decide ascensos y descensos.</p>
+            <p>2 o 3 partidos al mes contra rivales distintos. Una clasificación por categoría suma los puntos de los tres meses y, al cerrar enero, decide ascensos y descensos.</p>
           </li>
           <li>
             <span className={s.when}>Febrero a mayo</span>
             <h3 className="title">Race to Masters</h3>
-            <p>Grupos por nivel (A, B, C…). Cada mes el primero sube y el cuarto baja. Tu puesto suma puntos para la Race de tu categoría.</p>
+            <p>Grupos por nivel (A, B, C…). Cada mes el primero sube y el último baja. Tu puesto suma puntos para la Race de tu categoría.</p>
           </li>
           <li>
             <span className={s.when}>{mastersDays}</span>
@@ -104,7 +104,7 @@ export default async function Home() {
       </section>
 
       <section className={`wrap ${s.block} ${s.facts}`} aria-label="Información práctica">
-        <div><strong>3 partidos al mes</strong><p>Por pareja, en grupos de cuatro.</p></div>
+        <div><strong>2 o 3 partidos al mes</strong><p>Por pareja, en grupos de tres o cuatro.</p></div>
         <div><strong>90 minutos</strong><p>Reserva por partido. Si se acaba el tiempo, gana quien vaya por delante.</p></div>
         <div><strong>{season.feePerPlayer} € por jugador</strong><p>Cada partido se paga al precio habitual de la pista.</p></div>
         <div><strong>Ranking individual</strong><p>Sigue tu evolución toda la temporada, cambies o no de pareja.</p></div>
