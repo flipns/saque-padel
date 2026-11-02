@@ -1,5 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { supabaseServer, supabaseConfigured } from "@/lib/supabase/server";
+import { destinationAfterLogin } from "@/lib/afterLogin";
 import { LoginForm } from "./LoginForm";
 import s from "./acceso.module.css";
 
@@ -7,6 +10,14 @@ export const metadata = { title: "Entrar · SAQUE LEAGUE" };
 
 export default async function Acceso({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
   const { next = "/", error } = await searchParams;
+
+  // Si ya hay sesión, no tiene sentido pedir otro enlace.
+  if (supabaseConfigured()) {
+    const sb = await supabaseServer();
+    const { data } = await sb.auth.getUser();
+    if (data.user) redirect(await destinationAfterLogin(sb, next));
+  }
+
   return (
     <main className={s.page}>
       <Link href="/" className={s.logo}><Image src="/brand/saque-navy.png" alt="Saque, volver al inicio" width={140} height={56} /></Link>
