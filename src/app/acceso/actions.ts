@@ -11,15 +11,23 @@ export async function sendMagicLink(_: LoginState, form: FormData): Promise<Logi
 
   // Solo se envían enlaces a emails inscritos (pareja o tutor) o de administración.
   const admin = supabaseAdmin();
-  const [{ count: pairs }, { count: admins }] = await Promise.all([
+  const [pairsRes, adminsRes] = await Promise.all([
     admin.from("pair_access").select("*", { count: "exact", head: true }).eq("email", email),
     admin.from("admins").select("*", { count: "exact", head: true }).eq("email", email),
   ]);
+  if (pairsRes.error || adminsRes.error) {
+    console.error("Login check failed", pairsRes.error ?? adminsRes.error);
+    return { status: "error", message: "El acceso no está configurado correctamente. Avisa a la organización." };
+  }
+
   const generic: LoginState = {
     status: "sent",
     message: "Si ese email está inscrito en la liga, te llegará un enlace para entrar. Revisa también la carpeta de spam.",
   };
-  if (!pairs && !admins) return generic;
+  if (!pairsRes.count && !adminsRes.count) {
+    console.warn("Login attempt for unregistered email");
+    return generic;
+  }
 
   const sb = await supabaseServer();
   const site = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
@@ -28,6 +36,9 @@ export async function sendMagicLink(_: LoginState, form: FormData): Promise<Logi
     email,
     options: { emailRedirectTo: `${site}/auth/callback?next=${encodeURIComponent(safeNext)}`, shouldCreateUser: true },
   });
-  if (error) return { status: "error", message: "No se ha podido enviar el email. Inténtalo de nuevo en unos minutos." };
+  if (error) {
+    console.error("signInWithOtp failed", error);
+    return { status: "error", message: "No se ha podido enviar el email. Inténtalo de nuevo en unos minutos." };
+  }
   return generic;
 }
