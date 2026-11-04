@@ -1,4 +1,6 @@
-import { supabaseServer, supabaseConfigured } from "./supabase/server";
+import { unstable_cache } from "next/cache";
+import { createClient } from "@supabase/supabase-js";
+import { supabaseConfigured } from "./supabase/server";
 
 export interface SeasonInfo {
   name: string;
@@ -34,17 +36,38 @@ const FALLBACK: SeasonInfo = {
   ],
 };
 
+type RawSeason = {
+  name: string; registration_deadline_at: string; season_starts_at: string; masters_starts_on: string; masters_ends_on: string;
+  registration_form_url: string | null; entry_fee_per_player: number; prize: any;
+  cats: { division: "MASCULINA" | "FEMENINA"; code: string; name: string; level: number }[];
+} | null;
+
+/** Datos públicos de la temporada. Caché de 60 s compartida por todos los visitantes: la portada no consulta la base de datos en cada visita. */
+const fetchSeason = unstable_cache(async (): Promise<RawSeason> => {
+  const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data: s, error } = await sb.from("seasons").select("*").eq("is_current", true).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!s) return null;
+  const { data: cats } = await sb
+    .from("categories")
+    .select("code, name, level_order, active, divisions!inner(code, season_id)")
+    .eq("divisions.season_id", s.id)
+    .eq("active", true);
+  return {
+    name: s.name, registration_deadline_at: s.registration_deadline_at, season_starts_at: s.season_starts_at,
+    masters_starts_on: s.masters_starts_on, masters_ends_on: s.masters_ends_on, registration_form_url: s.registration_form_url,
+    entry_fee_per_player: Number(s.entry_fee_per_player), prize: s.prize,
+    cats: ((cats ?? []) as any[])
+      .map((c) => ({ division: (Array.isArray(c.divisions) ? c.divisions[0] : c.divisions).code, code: c.code, name: c.name, level: c.level_order }))
+      .sort((a, b) => (a.division === b.division ? a.level - b.level : a.division === "MASCULINA" ? -1 : 1)),
+  };
+}, ["landing-season"], { revalidate: 60 });
+
 export async function getSeason(): Promise<SeasonInfo> {
   if (!supabaseConfigured()) return FALLBACK;
   try {
-    const sb = await supabaseServer();
-    const { data: s } = await sb.from("seasons").select("*").eq("is_current", true).maybeSingle();
+    const s = await fetchSeason();
     if (!s) return FALLBACK;
-    const { data: cats } = await sb
-      .from("categories")
-      .select("code, name, level_order, active, divisions!inner(code, season_id)")
-      .eq("divisions.season_id", s.id)
-      .eq("active", true);
     return {
       name: s.name,
       registrationDeadline: new Date(s.registration_deadline_at),
@@ -52,11 +75,9 @@ export async function getSeason(): Promise<SeasonInfo> {
       mastersStart: s.masters_starts_on,
       mastersEnd: s.masters_ends_on,
       formUrl: s.registration_form_url,
-      feePerPlayer: Number(s.entry_fee_per_player),
+      feePerPlayer: s.entry_fee_per_player,
       prize: { amount: Number(s.prize?.amount ?? 200), provider: s.prize?.provider ?? "Playtomic" },
-      categories: (cats ?? [])
-        .map((c: any) => ({ division: c.divisions.code, code: c.code, name: c.name, level: c.level_order }))
-        .sort((a: any, b: any) => (a.division === b.division ? a.level - b.level : a.division === "MASCULINA" ? -1 : 1)),
+      categories: s.cats,
     };
   } catch {
     return FALLBACK;

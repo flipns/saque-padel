@@ -23,17 +23,18 @@ export default async function MiLiga({ searchParams }: { searchParams: Promise<{
   const [cats, mine, phases] = await Promise.all([loadCats(sb, season.id), loadPairs(sb, season.id, { ids: pairIds }), loadPhases(sb, season.id)]);
   const me = mine.find((p) => p.id === pid)!;
   const cat = cats.find((c) => c.id === me.categoryId)!;
-  const [catPairs, matches, standing] = await Promise.all([
+  const published = phases.filter((p) => ["PUBLISHED", "ACTIVE", "CLOSED", "LOCKED"].includes(p.status));
+  const current = published[published.length - 1];
+  const [catPairs, matches, standing, groups] = await Promise.all([
     loadPairs(sb, season.id, { categoryId: me.categoryId }), loadMatches(sb, season.id, { pairIds: [pid] }), categoryStandings(sb, season, me.categoryId),
+    current ? loadGroups(sb, current.id) : Promise.resolve([]),
   ]);
   const pm = pairMap(catPairs);
   const subs = await loadOpenSubmissions(sb, matches.map((m) => m.id));
   const myRow = standing.rows.find((r) => r.pairId === pid);
   const toConfirm = matches.filter((m) => m.status === "RESULT_PENDING_CONFIRMATION" && subs.get(m.id) && subs.get(m.id).submitted_by_pair !== pid);
-  const published = phases.filter((p) => ["PUBLISHED", "ACTIVE", "CLOSED", "LOCKED"].includes(p.status));
-  const current = published[published.length - 1];
   const byPhase = [...new Set(matches.map((m) => m.phaseNumber))].sort((a, b) => b - a);
-  const groupInfo = current ? (await loadGroups(sb, current.id)).find((g) => g.pairIds.includes(pid)) : undefined;
+  const groupInfo = groups.find((g) => g.pairIds.includes(pid));
 
   return (
     <>

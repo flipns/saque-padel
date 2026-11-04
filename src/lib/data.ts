@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   levelingStandings, mergeRules, replayRanking, pairKey, groupSizes,
@@ -17,10 +18,10 @@ export interface SeasonRow {
   entry_fee_per_player: number; registration_form_url: string | null;
 }
 
-export async function getSeasonRow(sb: SB): Promise<SeasonRow | null> {
+export const getSeasonRow = cache(async (sb: SB): Promise<SeasonRow | null> => {
   const { data } = await sb.from("seasons").select("*").eq("is_current", true).maybeSingle();
   return (data as SeasonRow) ?? null;
-}
+});
 
 export interface Cat {
   id: string; code: string; name: string; level: number;
@@ -30,7 +31,7 @@ export interface Cat {
 
 export const divLabel = (d: Division) => (d === "FEMENINA" ? "femenina" : "masculina");
 
-export async function loadCats(sb: SB, seasonId: string): Promise<Cat[]> {
+export const loadCats = cache(async (sb: SB, seasonId: string): Promise<Cat[]> => {
   const { data } = await sb
     .from("categories")
     .select("id, code, name, level_order, active, divisions!inner(id, code, season_id)")
@@ -46,15 +47,23 @@ export async function loadCats(sb: SB, seasonId: string): Promise<Cat[]> {
       };
     })
     .sort((a, b) => (a.division === b.division ? a.level - b.level : a.division === "MASCULINA" ? -1 : 1));
-}
+});
 
-export async function loadPhases(sb: SB, seasonId: string) {
+export const loadPhases = cache(async (sb: SB, seasonId: string) => {
   const { data } = await sb.from("phases").select("*").eq("season_id", seasonId).order("number");
   return (data ?? []) as {
     id: string; number: number; kind: "LEVELING" | "RACE"; name: string; starts_on: string; ends_on: string;
     results_deadline: string; status: string; generator_seed: number | null; published_at: string | null;
   }[];
-}
+});
+
+/** Temporada, categorías y fases: lo que casi toda pantalla necesita. */
+export const loadBase = cache(async (sb: SB) => {
+  const season = await getSeasonRow(sb);
+  if (!season) return null;
+  const [cats, phases] = await Promise.all([loadCats(sb, season.id), loadPhases(sb, season.id)]);
+  return { season, cats, phases };
+});
 
 // ---------- Parejas ----------
 
@@ -63,10 +72,11 @@ export interface PairView { id: string; categoryId: string; status: string; play
 
 export const pairName = (p?: PairView | null) => (p ? p.players.map((x) => x.name).join(" / ") : "—");
 
-export async function loadPairs(
-  sb: SB, seasonId: string,
-  opts: { contacts?: boolean; emails?: boolean; categoryId?: string; ids?: string[] } = {}
-): Promise<PairView[]> {
+type PairOpts = { contacts?: boolean; emails?: boolean; categoryId?: string; ids?: string[] };
+export const loadPairs = (sb: SB, seasonId: string, opts: PairOpts = {}) => loadPairsC(sb, seasonId, JSON.stringify(opts));
+
+const loadPairsC = cache(async (sb: SB, seasonId: string, key: string): Promise<PairView[]> => {
+  const opts: PairOpts = JSON.parse(key);
   const sel =
     `id, category_id, status, pair_members(slot, players(id, full_name, is_minor${opts.contacts ? ", player_contacts(phone)" : ""}))` +
     (opts.emails ? ", pair_access(email)" : "");
@@ -88,7 +98,7 @@ export async function loadPairs(
       }),
     emails: (p.pair_access ?? []).map((a: any) => a.email),
   }));
-}
+});
 
 export const pairMap = (pairs: PairView[]) => new Map(pairs.map((p) => [p.id, p]));
 
@@ -103,7 +113,10 @@ export interface MatchView {
 
 export interface MatchFilter { phaseId?: string; categoryId?: string; pairIds?: string[]; statuses?: string[]; id?: string; maxPhaseNumber?: number }
 
-export async function loadMatches(sb: SB, seasonId: string, f: MatchFilter = {}): Promise<MatchView[]> {
+export const loadMatches = (sb: SB, seasonId: string, f: MatchFilter = {}) => loadMatchesC(sb, seasonId, JSON.stringify(f));
+
+const loadMatchesC = cache(async (sb: SB, seasonId: string, key: string): Promise<MatchView[]> => {
+  const f: MatchFilter = JSON.parse(key);
   let q = sb
     .from("matches")
     .select("id, phase_id, group_id, pair_a_id, pair_b_id, status, scheduled_at, court, sets, ended_by_time, winner_side, points_override, confirmed_at, updated_at, groups!inner(letter, category_id), phases!inner(number, season_id)")
@@ -130,7 +143,7 @@ export async function loadMatches(sb: SB, seasonId: string, f: MatchFilter = {})
       } as MatchView;
     })
     .sort((a, b) => a.phaseNumber - b.phaseNumber || a.groupLetter.localeCompare(b.groupLetter) || a.id.localeCompare(b.id));
-}
+});
 
 export const toRecord = (m: MatchView): MatchRecord => ({
   id: m.id, pairA: m.pairA, pairB: m.pairB, status: m.status as MatchRecord["status"],
@@ -175,6 +188,28 @@ export async function loadHistory(sb: SB, seasonId: string, excludePhaseId: stri
     if (members.length === 3) members.forEach((m) => small.add(m));
   }
   return { history, small };
+}
+
+/** Igual que loadHistory pero de todas las categorías en una sola consulta (para la pantalla de Grupos). */
+export async function loadHistoryAll(sb: SB, seasonId: string, excludePhaseId: string) {
+  const { data } = await sb
+    .from("group_pairs")
+    .select("group_id, pair_id, groups!inner(category_id), phases!inner(season_id)")
+    .eq("phases.season_id", seasonId).neq("phase_id", excludePhaseId).limit(10000);
+  const byGroup = new Map<string, { cat: string; members: string[] }>();
+  for (const r of (data ?? []) as any[]) {
+    const g = byGroup.get(r.group_id) ?? { cat: one<any>(r.groups).category_id as string, members: [] };
+    g.members.push(r.pair_id);
+    byGroup.set(r.group_id, g);
+  }
+  const out = new Map<string, { history: Set<string>; small: Set<string> }>();
+  for (const { cat, members } of byGroup.values()) {
+    const h = out.get(cat) ?? { history: new Set<string>(), small: new Set<string>() };
+    for (let i = 0; i < members.length; i++) for (let j = i + 1; j < members.length; j++) h.history.add(pairKey(members[i], members[j]));
+    if (members.length === 3) members.forEach((m) => h.small.add(m));
+    out.set(cat, h);
+  }
+  return out;
 }
 
 // ---------- Clasificaciones ----------

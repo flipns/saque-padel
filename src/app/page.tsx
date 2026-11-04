@@ -15,8 +15,9 @@ export default async function Home() {
   if (supabaseConfigured()) {
     try {
       const sb = await supabaseServer();
-      const { data } = await sb.auth.getUser();
-      if (data.user) {
+      // Lectura local de la cookie (sin red): solo decide qué botón se muestra; cada pantalla verifica la sesión por su cuenta.
+      const { data } = await sb.auth.getSession();
+      if (data.session) {
         const { data: isAdmin } = await sb.rpc("is_admin");
         home = isAdmin ? { href: "/admin", label: "Panel" } : { href: "/mi-liga", label: "Mi liga" };
       }

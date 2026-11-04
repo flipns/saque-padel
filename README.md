@@ -9,6 +9,7 @@ Stack: Next.js 15 (App Router) + Supabase (Postgres, Auth con magic link, RLS, p
 1. **Supabase**: crea el proyecto en región EU. En *SQL Editor* ejecuta, en orden:
    - `supabase/migrations/0001_schema.sql`
    - `supabase/migrations/0002_player_zone.sql` (zona de jugador, permisos más estrictos y contactos entre rivales)
+   - `supabase/migrations/0003_performance.sql` (índices y permisos más rápidos; no cambia el comportamiento)
    - `supabase/seed.sql` (antes cambia `cambia-esto@ejemplo.com` por tu email de administrador; si ya lo ejecutaste, no hace falta repetirlo)
    - Si `create extension pg_cron` falla, actívala en *Database → Extensions* y vuelve a ejecutar las dos últimas líneas de la migración.
 2. **Auth** (*Authentication*):
@@ -63,3 +64,11 @@ Un subdominio `*.vercel.app` no permite verificar un dominio en Resend, porque n
 5. Diciembre y enero: mismo flujo; el generador evita repetir rivales con el historial.
 
 Pendiente: grupos jerárquicos de la Race (febrero), ventana de cambios de pareja, avisos por email.
+
+## Rendimiento
+
+- **Región de Vercel = región de Supabase.** Es lo que más pesa: *Settings → Functions → Function Region* en Vercel, igual que la región de tu proyecto de Supabase (Frankfurt = `fra1`).
+- Cada petición verifica la sesión una sola vez y reutiliza temporada, categorías y fases entre las consultas de la misma pantalla (`src/lib/auth.ts`, `src/lib/data.ts`).
+- El middleware ya no llama a la red en cada petición.
+- La portada no consulta la base de datos para visitantes anónimos (caché de 60 s).
+- `0003_performance.sql` añade índices y evalúa los permisos una vez por consulta, no una vez por fila.

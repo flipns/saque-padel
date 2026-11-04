@@ -1,8 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { cache } from "react";
 
 /** Cliente con la sesión del usuario (respeta RLS). Para Server Components, acciones y rutas. */
-export async function supabaseServer() {
+export const supabaseServer = cache(async () => {
   const store = await cookies();
   return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     cookies: {
@@ -16,7 +17,7 @@ export async function supabaseServer() {
       },
     },
   });
-}
+});
 
 export const supabaseConfigured = () =>
   Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);

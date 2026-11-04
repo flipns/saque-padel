@@ -14,7 +14,8 @@ export async function middleware(request: NextRequest) {
       },
     },
   });
-  await sb.auth.getUser(); // refresca el token si ha caducado
+  // Solo refresca el token si ha caducado. No hace llamada de red en cada petición (las páginas verifican la sesión).
+  if (request.cookies.getAll().some((c) => c.name.includes("-auth-token"))) await sb.auth.getSession();
   return response;
 }
 

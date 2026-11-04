@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
-import { getSeasonRow, loadCats, loadPairs, loadPhases, loadGroups, loadHistory, loadMatches, pairMap, pairName, groupsText } from "@/lib/data";
+import { getSeasonRow, loadCats, loadPairs, loadPhases, loadGroups, loadHistoryAll, loadMatches, pairMap, pairName, groupsText } from "@/lib/data";
 import { pairKey } from "@/lib/engine";
 import { CatDot, Flash, MatchPill, PageHead, PhasePill } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -18,11 +18,10 @@ export default async function FasePage({ params, searchParams }: { params: Promi
   const phase = (await loadPhases(sb, season.id)).find((p) => p.number === n);
   if (!phase) notFound();
 
-  const [cats, pairs, groups, matches] = await Promise.all([
+  const [cats, pairs, groups, matches, histories] = await Promise.all([
     loadCats(sb, season.id), loadPairs(sb, season.id), loadGroups(sb, phase.id), loadMatches(sb, season.id, { phaseId: phase.id }),
+    loadHistoryAll(sb, season.id, phase.id),
   ]);
-  const histories = new Map<string, Awaited<ReturnType<typeof loadHistory>>>();
-  await Promise.all(cats.map(async (c) => histories.set(c.id, await loadHistory(sb, season.id, phase.id, c.id))));
 
   const pm = pairMap(pairs);
   const active = pairs.filter((p) => p.status === "ACTIVE");
@@ -91,7 +90,7 @@ export default async function FasePage({ params, searchParams }: { params: Promi
         const catPairs = active.filter((p) => p.categoryId === c.id);
         const inGroup = new Set(cg.flatMap((g) => g.pairIds));
         const loose = catPairs.filter((p) => !inGroup.has(p.id));
-        const hist = histories.get(c.id)!;
+        const hist = histories.get(c.id) ?? { history: new Set<string>(), small: new Set<string>() };
         const warnings: string[] = [];
         for (const g of cg) {
           if (g.pairIds.length > 0 && (g.pairIds.length < 3 || g.pairIds.length > 4)) warnings.push(`El grupo ${g.letter} tiene ${g.pairIds.length} parejas.`);
