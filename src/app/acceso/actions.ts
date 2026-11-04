@@ -1,15 +1,19 @@
 "use server";
+import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { destinationAfterLogin } from "@/lib/afterLogin";
 
 export type LoginState = { status: "idle" | "sent" | "error"; message?: string };
 
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/** Enlace por email. Solo se envía a emails inscritos (pareja o tutor) o de administración. */
 export async function sendMagicLink(_: LoginState, form: FormData): Promise<LoginState> {
   const email = String(form.get("email") ?? "").trim().toLowerCase();
   const next = String(form.get("next") ?? "/");
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { status: "error", message: "Escribe un email válido." };
+  if (!EMAIL_RE.test(email)) return { status: "error", message: "Escribe un email válido." };
 
-  // Solo se envían enlaces a emails inscritos (pareja o tutor) o de administración.
   const admin = supabaseAdmin();
   const [pairsRes, adminsRes] = await Promise.all([
     admin.from("pair_access").select("*", { count: "exact", head: true }).eq("email", email),
@@ -41,4 +45,22 @@ export async function sendMagicLink(_: LoginState, form: FormData): Promise<Logi
     return { status: "error", message: "No se ha podido enviar el email. Inténtalo de nuevo en unos minutos." };
   }
   return generic;
+}
+
+/** Email + contraseña (disponible cuando ya se creó la contraseña tras el primer acceso con enlace). */
+export async function passwordLogin(_: LoginState, form: FormData): Promise<LoginState> {
+  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  const password = String(form.get("password") ?? "");
+  const next = String(form.get("next") ?? "/");
+  if (!EMAIL_RE.test(email) || !password) return { status: "error", message: "Escribe tu email y tu contraseña." };
+
+  const sb = await supabaseServer();
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    return {
+      status: "error",
+      message: "Email o contraseña incorrectos. Si es tu primera vez o no recuerdas la contraseña, entra con el enlace por email.",
+    };
+  }
+  redirect(await destinationAfterLogin(sb, next));
 }

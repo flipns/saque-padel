@@ -11,7 +11,7 @@ export const metadata = { title: "Entrar · SAQUE LEAGUE" };
 export default async function Acceso({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
   const { next = "/", error } = await searchParams;
 
-  // Si ya hay sesión, no tiene sentido pedir otro enlace.
+  // Con sesión abierta no hay nada que pedir: se va directo a su zona.
   if (supabaseConfigured()) {
     const sb = await supabaseServer();
     const { data } = await sb.auth.getUser();
@@ -23,9 +23,7 @@ export default async function Acceso({ searchParams }: { searchParams: Promise<{
       <Link href="/" className={s.logo}><Image src="/brand/saque-navy.png" alt="Saque, volver al inicio" width={140} height={56} /></Link>
       <div className={s.card}>
         <h1 className="title">Entrar</h1>
-        <p className="muted">
-          Te enviamos un enlace al email con el que inscribiste a tu pareja. Si el jugador es menor, usa el email del tutor.
-        </p>
+        <p className="muted">Usa el email con el que se inscribió tu pareja. Si el jugador es menor, el del tutor.</p>
         {error && <p role="alert" className="error">El enlace ha caducado o ya se usó. Pide uno nuevo.</p>}
         <LoginForm next={next} />
       </div>

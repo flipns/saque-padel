@@ -1,9 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { getSeason, fmtDay } from "@/lib/season";
+import { supabaseServer, supabaseConfigured } from "@/lib/supabase/server";
 import s from "./landing.module.css";
-
-export const revalidate = 60;
 
 const DOT: Record<string, string> = {
   PREMIER: "var(--navy)", ORO: "var(--gold)", PLATA: "var(--silver)", BRONCE: "var(--bronze)", ROOKIE: "var(--rookie)",
@@ -11,6 +10,18 @@ const DOT: Record<string, string> = {
 
 export default async function Home() {
   const season = await getSeason();
+  // Con sesión abierta, los botones de entrada llevan directamente a la zona del usuario.
+  let home: { href: string; label: string } | null = null;
+  if (supabaseConfigured()) {
+    try {
+      const sb = await supabaseServer();
+      const { data } = await sb.auth.getUser();
+      if (data.user) {
+        const { data: isAdmin } = await sb.rpc("is_admin");
+        home = isAdmin ? { href: "/admin", label: "Panel" } : { href: "/mi-liga", label: "Mi liga" };
+      }
+    } catch {}
+  }
   const open = Date.now() <= season.registrationDeadline.getTime();
   const men = season.categories.filter((c) => c.division === "MASCULINA");
   const women = season.categories.filter((c) => c.division === "FEMENINA");
@@ -23,7 +34,7 @@ export default async function Home() {
         <div className={`wrap ${s.heroInner}`}>
           <header className={s.topbar}>
             <Image src="/brand/saque-white.png" alt="Saque pádel social club" width={150} height={60} priority />
-            <Link href="/acceso" className="btn btn-ghost">Entrar</Link>
+            <Link href={home?.href ?? "/acceso"} className="btn btn-ghost">{home?.label ?? "Entrar"}</Link>
           </header>
 
           <div className={s.heroCopy}>
@@ -32,7 +43,9 @@ export default async function Home() {
             <p className={s.season}>2026 / 2027</p>
             <p className={s.lead}>La liga interna de la Escuela de Pádel Saque.</p>
             <div className={s.ctaRow}>
-              {open && season.formUrl ? (
+              {home && !open ? (
+                <Link className="btn btn-light" href={home.href}>{home.label === "Panel" ? "Ir al panel" : "Ir a mi liga"}</Link>
+              ) : open && season.formUrl ? (
                 <a className="btn btn-light" href={season.formUrl} target="_blank" rel="noopener">Inscribir mi pareja</a>
               ) : (
                 <Link className="btn btn-light" href="/acceso">Entrar como jugador</Link>
@@ -113,7 +126,7 @@ export default async function Home() {
       <footer className={s.footer}>
         <div className="wrap">
           <Image src="/brand/saque-navy.png" alt="Saque pádel social club" width={130} height={52} />
-          <Link href="/acceso">Acceso jugadores</Link>
+          <Link href={home?.href ?? "/acceso"}>{home ? home.label : "Acceso jugadores"}</Link>
         </div>
       </footer>
     </main>
