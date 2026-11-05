@@ -3,7 +3,8 @@ import { getSeasonRow } from "@/lib/data";
 import { Flash, PageHead } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { isoToMadridParts } from "@/lib/dates";
-import { addAdminAction, removeAdminAction, saveContactAction, saveDatesAction, savePrizeAction } from "./actions";
+import { mailConfigured, fromAddress } from "@/lib/mailer";
+import { addAdminAction, flushNowAction, removeAdminAction, saveContactAction, saveDatesAction, savePrizeAction, sendTestEmailAction } from "./actions";
 
 export default async function Ajustes({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   const sp = await searchParams;
@@ -11,6 +12,13 @@ export default async function Ajustes({ searchParams }: { searchParams: Promise<
   const season = await getSeasonRow(sb);
   if (!season) return null;
   const { data: admins } = await sb.from("admins").select("email").order("email");
+  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const [pendingRes, failedRes, sentRes] = await Promise.all([
+    sb.from("notifications").select("id", { count: "exact", head: true }).is("emailed_at", null).gt("created_at", new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString()),
+    sb.from("notifications").select("id", { count: "exact", head: true }).is("emailed_at", null).gte("email_attempts", 3),
+    sb.from("notifications").select("id", { count: "exact", head: true }).eq("email_status", "SENT").gte("emailed_at", since),
+  ]);
+  const mailOn = mailConfigured(), cronOn = Boolean(process.env.CRON_SECRET);
   const prize = season.prize ?? {};
   return (
     <>
@@ -50,6 +58,20 @@ export default async function Ajustes({ searchParams }: { searchParams: Promise<
             <p className="help">Nunca se enseña el móvil de jugadores marcados como menores. Con esto desactivado, los jugadores no ven ningún contacto.</p>
             <SubmitButton className="btn btn-navy btn-sm">Guardar</SubmitButton>
           </form>
+        </div>
+
+        <div className="card">
+          <h2 style={{ fontSize: "1.1rem" }}>Avisos por email</h2>
+          <ul style={{ margin: ".6rem 0", paddingLeft: "1.1rem" }}>
+            <li>Envío de emails: <b>{mailOn ? `configurado (remitente ${fromAddress()})` : "NO configurado"}</b></li>
+            <li>Tarea diaria de recordatorios: <b>{cronOn ? "configurada" : "no configurada (falta CRON_SECRET)"}</b></li>
+            <li>Enviados en las últimas 24 h: <b>{sentRes.count ?? 0}</b> · Pendientes: <b>{pendingRes.count ?? 0}</b> · Con error tras 3 intentos: <b>{failedRes.count ?? 0}</b></li>
+          </ul>
+          {!mailOn && <p className="help">Añade <code>SMTP_USER</code> y <code>SMTP_PASS</code> (contraseña de aplicación del Gmail del club) en las variables de entorno de Vercel y vuelve a desplegar.</p>}
+          <div className="actions">
+            <form action={sendTestEmailAction}><SubmitButton className="btn btn-outline btn-sm" pendingText="Enviando…">Enviarme un email de prueba</SubmitButton></form>
+            <form action={flushNowAction}><SubmitButton className="btn btn-outline btn-sm" pendingText="Enviando…">Enviar ahora los avisos pendientes</SubmitButton></form>
+          </div>
         </div>
 
         <div className="card">

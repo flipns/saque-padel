@@ -2,17 +2,20 @@
 import { requireAdmin } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { run, must } from "@/lib/flash";
+import { notifyPairs } from "@/lib/notify";
 import { parseSets, SCORE_ERRORS, str } from "@/lib/form";
-import { madridToIso } from "@/lib/dates";
+import { fmtDateTime, madridToIso } from "@/lib/dates";
 import { matchWinner, mergeRules, validateScore, type SetScore, type Side } from "@/lib/engine";
-import { getSeasonRow, loadMatches } from "@/lib/data";
+import { getSeasonRow, loadMatches, loadPairs, pairName, setsText, type MatchView } from "@/lib/data";
 
 async function auth(id: string) {
   const path = `/admin/partidos/${id}`;
   const { sb, user } = await requireAdmin(path);
   return { path, sb, user };
 }
-async function load(sb: Awaited<ReturnType<typeof auth>>["sb"], id: string) {
+type SB = Awaited<ReturnType<typeof auth>>["sb"];
+
+async function load(sb: SB, id: string) {
   const season = await getSeasonRow(sb);
   if (!season) throw new Error("No hay temporada activa");
   const m = (await loadMatches(sb, season.id, { id }))[0];
@@ -20,7 +23,14 @@ async function load(sb: Awaited<ReturnType<typeof auth>>["sb"], id: string) {
   return { season, m };
 }
 
-async function closeSubmissions(sb: Awaited<ReturnType<typeof auth>>["sb"], matchId: string, status: "ADMIN_RESOLVED" | "SUPERSEDED", note?: string) {
+/** Avisa a las dos parejas de lo que ha decidido la organización. El texto recibe los nombres de la pareja A y la B. */
+async function tell(sb: SB, seasonId: string, m: MatchView, kind: string, title: string, body: (a: string, b: string) => string) {
+  const pairs = await loadPairs(sb, seasonId, { ids: [m.pairA, m.pairB] });
+  const name = (id: string) => pairName(pairs.find((p) => p.id === id));
+  await notifyPairs(sb, [m.pairA, m.pairB], { matchId: m.id, kind, title, body: body(name(m.pairA), name(m.pairB)) });
+}
+
+async function closeSubmissions(sb: SB, matchId: string, status: "ADMIN_RESOLVED" | "SUPERSEDED", note?: string) {
   must(await sb.from("result_submissions").update({ status, resolution_note: note ?? null, responded_at: new Date().toISOString() })
     .eq("match_id", matchId).in("status", ["SUBMITTED", "DISPUTED"]));
 }
@@ -50,6 +60,7 @@ export async function setResultAction(form: FormData) {
     const winner = await applyResult(sb, season, id, sets, form.get("time") === "on", str(form, "winner"));
     await closeSubmissions(sb, id, "ADMIN_RESOLVED", "Resultado fijado por la organización");
     await audit(sb, user.email, "RESULT_SET_BY_ADMIN", "match", id, { sets, winner }, `Antes: ${m.status}`);
+    await tell(sb, season.id, m, "ADMIN_RESULT", "Resultado fijado por la organización", (a, b) => `${a} ${setsText(sets)} ${b}. Ya cuenta para la clasificación y el ranking.`);
     return "Resultado guardado. La clasificación y el ranking ya lo incluyen.";
   });
 }
@@ -59,12 +70,13 @@ export async function acceptSubmittedAction(form: FormData) {
   const id = str(form, "match");
   const { path, sb, user } = await auth(id);
   await run(path, async () => {
-    const { season } = await load(sb, id);
+    const { season, m } = await load(sb, id);
     const sub = must(await sb.from("result_submissions").select("*").eq("match_id", id).in("status", ["SUBMITTED", "DISPUTED"]).order("submitted_at", { ascending: false }).limit(1)) as any[];
     if (!sub[0]) throw new Error("No hay ningún resultado enviado pendiente.");
     const winner = await applyResult(sb, season, id, sub[0].sets, sub[0].ended_by_time, sub[0].winner_side);
     await closeSubmissions(sb, id, "ADMIN_RESOLVED", "Resultado enviado validado por la organización");
     await audit(sb, user.email, "SUBMISSION_ACCEPTED_BY_ADMIN", "match", id, { sets: sub[0].sets, winner });
+    await tell(sb, season.id, m, "ADMIN_RESULT", "Resultado validado por la organización", (a, b) => `${a} ${setsText(sub[0].sets)} ${b}. Ya cuenta para la clasificación y el ranking.`);
     return "Resultado enviado validado.";
   });
 }
@@ -91,6 +103,7 @@ export async function woAction(form: FormData) {
     }, { onConflict: "match_id" }));
     await closeSubmissions(sb, id, "ADMIN_RESOLVED", "WO");
     await audit(sb, user.email, "WO_APPLIED", "match", id, { pa, pb, responsible: resp }, reason);
+    await tell(sb, season.id, m, "ADMIN_WO", "WO registrado en vuestro partido", (a, b) => `La organización ha registrado un WO en ${a} contra ${b}. Motivo: ${reason}`);
     return "WO registrado.";
   });
 }
@@ -99,7 +112,7 @@ export async function notPlayedAction(form: FormData) {
   const id = str(form, "match");
   const { path, sb, user } = await auth(id);
   await run(path, async () => {
-    const { season } = await load(sb, id);
+    const { season, m } = await load(sb, id);
     const reason = str(form, "reason");
     if (!reason) throw new Error("Escribe el motivo.");
     const z = mergeRules(season.rules).matchPoints.notPlayed;
@@ -109,6 +122,7 @@ export async function notPlayedAction(form: FormData) {
     }).eq("id", id));
     await closeSubmissions(sb, id, "ADMIN_RESOLVED", "No disputado");
     await audit(sb, user.email, "MATCH_NOT_PLAYED", "match", id, null, reason);
+    await tell(sb, season.id, m, "ADMIN_NOT_PLAYED", "Partido marcado como no disputado", (a, b) => `La organización ha marcado como no disputado ${a} contra ${b} (0 puntos para ambas parejas). Motivo: ${reason}`);
     return "Partido marcado como no disputado (0 puntos para ambas parejas).";
   });
 }
@@ -134,7 +148,7 @@ export async function scheduleAction(form: FormData) {
   const id = str(form, "match");
   const { path, sb, user } = await auth(id);
   await run(path, async () => {
-    const { m } = await load(sb, id);
+    const { season, m } = await load(sb, id);
     const date = str(form, "date"), time = str(form, "time") || "18:00", court = str(form, "court");
     const at = date ? madridToIso(date, time) : null;
     const patch: Record<string, unknown> = { scheduled_at: at, court: court || null, updated_at: new Date().toISOString() };
@@ -146,6 +160,7 @@ export async function scheduleAction(form: FormData) {
     }
     must(await sb.from("matches").update(patch).eq("id", id));
     await audit(sb, user.email, "SCHEDULE_SET_BY_ADMIN", "match", id, { at, court });
+    if (at) await tell(sb, season.id, m, "ADMIN_SCHEDULE", "La organización ha fijado la fecha de vuestro partido", (a, b) => `${a} contra ${b}: ${fmtDateTime(at)}${court ? ` · ${court}` : ""}.`);
     return at ? "Fecha y pista guardadas." : "Fecha quitada.";
   });
 }

@@ -8,6 +8,8 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { fmtDate } from "@/lib/dates";
 import { addToGroupAction, generateAction, moveAction, publishAction, unpublishAction } from "../actions";
 
+export const maxDuration = 60; // al publicar se envían muchos emails tras responder
+
 export default async function FasePage({ params, searchParams }: { params: Promise<{ n: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
   const { n: nParam } = await params;
   const { ok, err } = await searchParams;

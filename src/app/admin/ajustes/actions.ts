@@ -1,5 +1,8 @@
 "use server";
 import { requireAdmin } from "@/lib/auth";
+import { flushEmails } from "@/lib/email";
+import { mailConfigured, sendMail, fromAddress } from "@/lib/mailer";
+import { renderNotificationEmail } from "@/lib/emailTemplate";
 import { audit } from "@/lib/audit";
 import { run, must } from "@/lib/flash";
 import { str } from "@/lib/form";
@@ -74,5 +77,28 @@ export async function removeAdminAction(form: FormData) {
     must(await sb.from("admins").delete().eq("email", email));
     await audit(sb, user.email, "ADMIN_REMOVED", "admin", email);
     return `${email} ya no es administrador.`;
+  });
+}
+
+/** Envía un email de prueba a la persona administradora que lo pide, para comprobar que el envío funciona. */
+export async function sendTestEmailAction() {
+  const { user } = await requireAdmin(PATH);
+  await run(PATH, async () => {
+    if (!mailConfigured()) throw new Error("Falta configurar el envío de emails: añade SMTP_USER y SMTP_PASS (contraseña de aplicación del Gmail) en Vercel y vuelve a desplegar.");
+    const to = (user.email ?? "").toLowerCase();
+    const mail = renderNotificationEmail({ title: "Email de prueba", body: "Si lees esto, el envío de avisos de la SAQUE LEAGUE funciona correctamente.", match_id: null, kind: "TEST" }, process.env.NEXT_PUBLIC_SITE_URL ?? "");
+    try { await sendMail({ to, ...mail }); }
+    catch (e: any) { throw new Error(`No se ha podido enviar: ${e?.message ?? e}`); }
+    return `Email de prueba enviado a ${to} desde ${fromAddress()}. Si no llega, mira la carpeta de spam.`;
+  });
+}
+
+/** Envía ahora los avisos pendientes (útil tras configurar el envío o si hubo errores). */
+export async function flushNowAction() {
+  await requireAdmin(PATH);
+  await run(PATH, async () => {
+    const r = await flushEmails({ limit: 300 });
+    if (!r.configured) throw new Error("Falta configurar el envío de emails (SMTP_USER y SMTP_PASS en Vercel).");
+    return `Enviados: ${r.sent}. Omitidos por preferencia: ${r.skipped}. Con error: ${r.failed}.`;
   });
 }

@@ -1,5 +1,7 @@
 "use server";
+import { after } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+import { flushEmails } from "@/lib/email";
 import { audit } from "@/lib/audit";
 import { run, must } from "@/lib/flash";
 import { str } from "@/lib/form";
@@ -103,7 +105,10 @@ export async function publishAction(form: FormData) {
     for (let i = 0; i < rows.length; i += 200) must(await sb.from("matches").insert(rows.slice(i, i + 200)));
     must(await sb.from("phases").update({ status: "PUBLISHED", published_at: new Date().toISOString() }).eq("id", phase.id));
     await audit(sb, user.email, "PHASE_PUBLISHED", "phase", phase.id, { matches: rows.length });
-    return `Fase publicada: ${rows.length} partidos creados. Los jugadores ya pueden verlos.`;
+    // Aviso a todos los jugadores de la fase (dentro de la web y por email). Los emails se envían tras responder.
+    const notified = (must(await sb.rpc("notify_phase_published", { p_phase: phase.id })) as number | null) ?? 0;
+    after(async () => { try { await flushEmails({ limit: 500 }); } catch (e) { console.error("flushEmails failed", e); } });
+    return `Fase publicada: ${rows.length} partidos creados. Los jugadores ya pueden verlos y se les avisa (${notified} avisos).`;
   });
 }
 
