@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { fmtDateTime } from "@/lib/dates";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   levelingStandings, mergeRules, replayRanking, pairKey, groupSizes,
@@ -108,7 +109,7 @@ export interface MatchView {
   id: string; phaseId: string; phaseNumber: number; groupId: string; groupLetter: string; categoryId: string;
   pairA: string; pairB: string; status: string; scheduledAt: string | null; court: string | null;
   sets: SetScore[]; endedByTime: boolean; winner: Side | null; pointsOverride: { a: number; b: number } | null;
-  confirmedAt: string | null; updatedAt: string;
+  confirmedAt: string | null; updatedAt: string; agreedStartAt: string | null;
 }
 
 export interface MatchFilter { phaseId?: string; categoryId?: string; pairIds?: string[]; statuses?: string[]; id?: string; maxPhaseNumber?: number }
@@ -119,7 +120,7 @@ const loadMatchesC = cache(async (sb: SB, seasonId: string, key: string): Promis
   const f: MatchFilter = JSON.parse(key);
   let q = sb
     .from("matches")
-    .select("id, phase_id, group_id, pair_a_id, pair_b_id, status, scheduled_at, court, sets, ended_by_time, winner_side, points_override, confirmed_at, updated_at, groups!inner(letter, category_id), phases!inner(number, season_id)")
+    .select("id, phase_id, group_id, pair_a_id, pair_b_id, status, scheduled_at, court, sets, ended_by_time, winner_side, points_override, confirmed_at, updated_at, agreed_start_at, groups!inner(letter, category_id), phases!inner(number, season_id)")
     .eq("phases.season_id", seasonId);
   if (f.id) q = q.eq("id", f.id);
   if (f.phaseId) q = q.eq("phase_id", f.phaseId);
@@ -139,7 +140,7 @@ const loadMatchesC = cache(async (sb: SB, seasonId: string, key: string): Promis
         id: m.id, phaseId: m.phase_id, phaseNumber: ph.number, groupId: m.group_id, groupLetter: g.letter, categoryId: g.category_id,
         pairA: m.pair_a_id, pairB: m.pair_b_id, status: m.status, scheduledAt: m.scheduled_at, court: m.court,
         sets: (m.sets ?? []) as SetScore[], endedByTime: m.ended_by_time, winner: m.winner_side as Side | null,
-        pointsOverride: m.points_override, confirmedAt: m.confirmed_at, updatedAt: m.updated_at,
+        pointsOverride: m.points_override, confirmedAt: m.confirmed_at, updatedAt: m.updated_at, agreedStartAt: m.agreed_start_at ?? null,
       } as MatchView;
     })
     .sort((a, b) => a.phaseNumber - b.phaseNumber || a.groupLetter.localeCompare(b.groupLetter) || a.id.localeCompare(b.id));
@@ -149,6 +150,35 @@ export const toRecord = (m: MatchView): MatchRecord => ({
   id: m.id, pairA: m.pairA, pairB: m.pairB, status: m.status as MatchRecord["status"],
   sets: m.sets, winner: m.winner, pointsOverride: m.pointsOverride,
 });
+
+/** Texto corto sobre la fecha de un partido, según en qué punto de la coordinación esté. */
+export function matchWhen(m: MatchView): string {
+  switch (m.status) {
+    case "SCHEDULED": return `Programado: ${fmtDateTime(m.scheduledAt)}${m.court ? ` · ${m.court}` : ""}`;
+    case "DATE_AGREED": return `Fecha acordada: ${fmtDateTime(m.agreedStartAt)} · falta reservar la pista`;
+    case "RESCHEDULE_REQUESTED": return `Cambio de fecha en curso${m.scheduledAt ? ` · sigue vigente ${fmtDateTime(m.scheduledAt)}` : ""}`;
+    case "SCHEDULE_PROPOSED": return "Hay horarios propuestos";
+    case "PENDING_SCHEDULE": return "Sin fecha: proponed horarios a vuestros rivales";
+    default: return m.scheduledAt ? fmtDateTime(m.scheduledAt) : "";
+  }
+}
+
+export interface OptionView { id: string; pairId: string; email: string | null; startsAt: string; state: string; createdAt: string; decidedAt: string | null; decidedBy: string | null }
+
+/** Horarios propuestos para un partido (solo los ven sus cuatro jugadores y la administración). */
+export async function loadOptions(sb: SB, matchId: string): Promise<OptionView[]> {
+  const { data, error } = await sb.from("match_date_options").select("*").eq("match_id", matchId).order("created_at").order("starts_at");
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as any[]).map((o) => ({
+    id: o.id, pairId: o.proposed_by_pair, email: o.proposed_by_email, startsAt: o.starts_at, state: o.state,
+    createdAt: o.created_at, decidedAt: o.decided_at, decidedBy: o.decided_by_email,
+  }));
+}
+
+export async function loadNotifications(sb: SB, limit = 50) {
+  const { data } = await sb.from("notifications").select("id, match_id, kind, title, body, created_at, read_at").order("created_at", { ascending: false }).limit(limit);
+  return (data ?? []) as { id: string; match_id: string | null; kind: string; title: string; body: string | null; created_at: string; read_at: string | null }[];
+}
 
 export const setsText = (sets: SetScore[]) => sets.map((s) => `${s.a}-${s.b}`).join("  ");
 

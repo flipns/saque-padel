@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
-import { getSeasonRow, loadCats, loadPairs, loadMatches, loadOpenSubmissions, pairMap, pairName } from "@/lib/data";
+import { getSeasonRow, loadCats, loadPairs, loadMatches, loadOpenSubmissions, loadOptions, matchWhen, pairMap, pairName } from "@/lib/data";
 import { mergeRules } from "@/lib/engine";
 import { Flash, MatchPill, PageHead } from "@/components/ui";
 import { ScoreInputs } from "@/components/ScoreInputs";
 import { SubmitButton } from "@/components/SubmitButton";
-import { fmtDateTime, isoToMadridParts, timeLeft } from "@/lib/dates";
+import { fmtDateTime, fmtRange, isoToMadridParts, timeLeft } from "@/lib/dates";
 import { acceptSubmittedAction, notPlayedAction, resetAction, scheduleAction, setResultAction, woAction } from "../actions";
 
 export default async function PartidoAdmin({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
@@ -17,7 +17,7 @@ export default async function PartidoAdmin({ params, searchParams }: { params: P
   if (!season) notFound();
   const m = (await loadMatches(sb, season.id, { id }))[0];
   if (!m) notFound();
-  const [cats, pairs, subs] = await Promise.all([loadCats(sb, season.id), loadPairs(sb, season.id), loadOpenSubmissions(sb, [id])]);
+  const [cats, pairs, subs, options] = await Promise.all([loadCats(sb, season.id), loadPairs(sb, season.id), loadOpenSubmissions(sb, [id]), loadOptions(sb, id)]);
   const pm = pairMap(pairs);
   const a = pm.get(m.pairA), b = pm.get(m.pairB);
   const cat = cats.find((c) => c.id === m.categoryId);
@@ -43,7 +43,7 @@ export default async function PartidoAdmin({ params, searchParams }: { params: P
               <span className={`team${m.winner === "B" ? " win" : ""}`}>{nameB}</span><span className="sets">{m.sets.map((s) => s.b).join("  ")}</span>
             </div>
             <div className="when">
-              {m.scheduledAt ? `${fmtDateTime(m.scheduledAt)}${m.court ? ` · ${m.court}` : ""}` : "Sin fecha acordada"}
+              {matchWhen(m) || "Sin fecha acordada"}
               {m.endedByTime && " · terminó por tiempo (90 min)"}
               {m.pointsOverride && ` · puntos de fase: ${m.pointsOverride.a} / ${m.pointsOverride.b}`}
             </div>
@@ -67,6 +67,22 @@ export default async function PartidoAdmin({ params, searchParams }: { params: P
         </div>
       )}
 
+      {options.length > 0 && (
+        <div className="card">
+          <h2 style={{ fontSize: "1.1rem", marginBottom: ".5rem" }}>Propuestas de fecha ({options.length})</h2>
+          <div className="table-scroll compact"><table>
+            <thead><tr><th>Horario</th><th>Propone</th><th>Estado</th><th>Decide</th></tr></thead>
+            <tbody>
+              {options.map((o) => (
+                <tr key={o.id}><td>{fmtRange(o.startsAt)}</td><td>{o.pairId === m.pairA ? nameA : nameB}</td>
+                  <td>{({ ACTIVE: "Activa", ACCEPTED: "Aceptada", REJECTED: "Rechazada", WITHDRAWN: "Retirada", SUPERSEDED: "Descartada", EXPIRED: "Caducada" } as Record<string, string>)[o.state]}</td>
+                  <td>{o.decidedBy ? `${o.decidedBy} · ${fmtDateTime(o.decidedAt)}` : "—"}</td></tr>
+              ))}
+            </tbody>
+          </table></div>
+        </div>
+      )}
+
       <div className="card">
         <h2 style={{ fontSize: "1.1rem", marginBottom: ".25rem" }}>{closed || sub ? "Corregir o fijar el resultado" : "Fijar el resultado"}</h2>
         <p className="muted" style={{ margin: "0 0 1rem" }}>Introduce los juegos de cada set. El ganador se calcula solo y el resultado queda como definitivo.</p>
@@ -86,7 +102,8 @@ export default async function PartidoAdmin({ params, searchParams }: { params: P
 
       {!closed && (
         <div className="card">
-          <h2 style={{ fontSize: "1.1rem", marginBottom: ".75rem" }}>Fecha y pista</h2>
+          <h2 style={{ fontSize: "1.1rem", marginBottom: ".25rem" }}>Fecha y pista (la fija la organización)</h2>
+          <p className="muted" style={{ margin: "0 0 .75rem" }}>Sustituye cualquier negociación en curso entre las parejas.</p>
           <form action={scheduleAction}>
             <input type="hidden" name="match" value={id} />
             <div className="fields">

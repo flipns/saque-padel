@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePlayer } from "@/lib/auth";
-import { getSeasonRow, loadCats, loadPairs, loadMatches, loadOpenSubmissions, pairMap, pairName } from "@/lib/data";
+import { getSeasonRow, loadBase, loadPairs, loadMatches, loadOpenSubmissions, loadOptions, matchWhen, pairMap, pairName } from "@/lib/data";
 import { Flash, MatchPill } from "@/components/ui";
 import { ScoreInputs } from "@/components/ScoreInputs";
 import { SubmitButton } from "@/components/SubmitButton";
-import { fmtDateTime, isoToMadridParts, timeLeft } from "@/lib/dates";
-import { respondAction, scheduleAction, submitResultAction } from "../actions";
+import { isoToMadridParts, timeLeft } from "@/lib/dates";
+import { respondAction, submitResultAction } from "../actions";
+import { Scheduling } from "./Scheduling";
 
 export default async function Partido({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
   const { id } = await params;
@@ -17,10 +18,17 @@ export default async function Partido({ params, searchParams }: { params: Promis
   const m = (await loadMatches(sb, season.id, { id }))[0];
   if (!m || !(pairIds.includes(m.pairA) || pairIds.includes(m.pairB))) notFound();
   const side = pairIds.includes(m.pairA) ? "A" : "B";
-  const [cats, pairs, subs, contacts] = await Promise.all([
-    loadCats(sb, season.id), loadPairs(sb, season.id, { ids: [m.pairA, m.pairB] }), loadOpenSubmissions(sb, [id]),
-    sb.rpc("rival_contacts", { p_match: id }),
+  const base = await loadBase(sb);
+  const cats = base?.cats ?? [];
+  const phase = base?.phases.find((p) => p.id === m.phaseId);
+  const [pairs, subs, contacts, options, bookRes] = await Promise.all([
+    loadPairs(sb, season.id, { ids: [m.pairA, m.pairB] }), loadOpenSubmissions(sb, [id]),
+    sb.rpc("rival_contacts", { p_match: id }), loadOptions(sb, id),
+    sb.from("matches").select("booking_ref").eq("id", id).maybeSingle(),
   ]);
+  const today = isoToMadridParts(new Date().toISOString()).date;
+  const minDay = phase && phase.starts_on > today ? phase.starts_on : today;
+  const maxDay = phase?.results_deadline ?? today;
   const pm = pairMap(pairs);
   const me = pm.get(side === "A" ? m.pairA : m.pairB), rival = pm.get(side === "A" ? m.pairB : m.pairA);
   const cat = cats.find((c) => c.id === m.categoryId);
@@ -28,7 +36,6 @@ export default async function Partido({ params, searchParams }: { params: Promis
   const closed = ["COMPLETED", "WO", "NOT_PLAYED"].includes(m.status);
   const mySets = m.sets.map((s) => (side === "A" ? s.a : s.b)), theirSets = m.sets.map((s) => (side === "A" ? s.b : s.a));
   const iWon = m.winner === side, theyWon = m.winner && m.winner !== side;
-  const when = isoToMadridParts(m.scheduledAt);
   const iSubmitted = sub && sub.submitted_by_pair === (side === "A" ? m.pairA : m.pairB);
 
   return (
@@ -42,7 +49,7 @@ export default async function Partido({ params, searchParams }: { params: Promis
             <span className={`team${iWon ? " win" : ""}`}>{pairName(me)} <small className="muted">(vosotros)</small></span><span className="sets">{mySets.join("  ")}</span>
             <span className={`team${theyWon ? " win" : ""}`}>{pairName(rival)}</span><span className="sets">{theirSets.join("  ")}</span>
           </div>
-          <div className="when">{m.scheduledAt ? `${fmtDateTime(m.scheduledAt)}${m.court ? ` · ${m.court}` : ""}` : "Sin fecha acordada todavía"}{m.endedByTime && " · terminó por tiempo"}</div>
+          <div className="when">{matchWhen(m)}{m.endedByTime && " · terminó por tiempo"}</div>
         </div>
       </div>
 
@@ -85,27 +92,17 @@ export default async function Partido({ params, searchParams }: { params: Promis
 
       {!closed && m.status !== "DISPUTED" && m.status !== "RESULT_PENDING_CONFIRMATION" && (
         <>
-          <div className="card" style={{ marginTop: "1rem" }}>
-            <h2 style={{ fontSize: "1.1rem", marginBottom: ".25rem" }}>Fecha y pista</h2>
-            <p className="muted" style={{ margin: "0 0 .75rem" }}>Cuando os pongáis de acuerdo, apuntadlo aquí (cualquiera de las dos parejas). Recordad reservar la pista de 90 minutos.</p>
-            {(contacts.data as any[] | null)?.length ? (
-              <p style={{ margin: "0 0 1rem" }}>Contacto de vuestros rivales:{" "}
+          {(contacts.data as any[] | null)?.length ? (
+            <div className="card" style={{ marginTop: "1rem" }}>
+              <p style={{ margin: 0 }}>Contacto de vuestros rivales:{" "}
                 {(contacts.data as any[]).map((c) => (
                   <span key={c.phone} style={{ marginRight: "1rem", whiteSpace: "nowrap" }}>{c.player_name}{" "}
                     <a href={`https://wa.me/${String(c.phone).replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer"><b>WhatsApp</b></a>{" · "}<a href={`tel:${c.phone}`}>llamar</a></span>
                 ))}
               </p>
-            ) : null}
-            <form action={scheduleAction}>
-              <input type="hidden" name="match" value={id} />
-              <div className="fields">
-                <div><label htmlFor="date">Día</label><input id="date" name="date" type="date" defaultValue={when.date} /></div>
-                <div><label htmlFor="time">Hora</label><input id="time" name="time" type="time" defaultValue={when.time} /></div>
-                <div><label htmlFor="court">Pista</label><input id="court" name="court" type="text" defaultValue={m.court ?? ""} placeholder="Ej. Pista 3" /></div>
-              </div>
-              <div style={{ marginTop: "1rem" }}><SubmitButton className="btn btn-outline btn-sm">Guardar fecha</SubmitButton></div>
-            </form>
-          </div>
+            </div>
+          ) : null}
+          <Scheduling m={m} options={options} myPairId={side === "A" ? m.pairA : m.pairB} rivalName={pairName(rival)} minDay={minDay} maxDay={maxDay} bookingRef={(bookRes.data as any)?.booking_ref ?? null} />
 
           <div className="card" style={{ marginTop: "1rem" }}>
             <h2 style={{ fontSize: "1.1rem", marginBottom: ".25rem" }}>Introducir el resultado</h2>

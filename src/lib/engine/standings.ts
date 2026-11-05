@@ -3,6 +3,10 @@ import { DEFAULT_RULES, type SeasonRules } from "./rules";
 
 export type MatchStatus =
   | "PENDING_SCHEDULE"
+  | "SCHEDULE_PROPOSED"
+  | "DATE_AGREED"
+  | "RESCHEDULE_REQUESTED"
+  | "PLAYED_PENDING_RESULT"
   | "SCHEDULED"
   | "RESULT_PENDING_CONFIRMATION"
   | "DISPUTED"

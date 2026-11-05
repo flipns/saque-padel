@@ -1,12 +1,11 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
-import { getSeasonRow, loadCats, loadPairs, loadPhases, loadMatches, pairMap, pairName, setsText } from "@/lib/data";
+import { getSeasonRow, loadCats, loadPairs, loadPhases, loadMatches, matchWhen, pairMap, pairName } from "@/lib/data";
 import { CategoryChips, MatchPill, PageHead } from "@/components/ui";
-import { fmtDateTime } from "@/lib/dates";
 
 const STATES = [
-  ["", "Todos"], ["PENDING_SCHEDULE", "Sin fecha"], ["SCHEDULED", "Programados"], ["RESULT_PENDING_CONFIRMATION", "Por confirmar"],
-  ["DISPUTED", "Impugnados"], ["COMPLETED", "Jugados"],
+  ["", "Todos"], ["PENDING_SCHEDULE,SCHEDULE_PROPOSED", "Sin fecha"], ["DATE_AGREED", "Falta pista"], ["RESCHEDULE_REQUESTED", "Cambio de fecha"],
+  ["SCHEDULED", "Programados"], ["RESULT_PENDING_CONFIRMATION", "Por confirmar"], ["DISPUTED", "Impugnados"], ["COMPLETED", "Jugados"],
 ] as const;
 const LIMIT = 150;
 
@@ -18,7 +17,7 @@ export default async function Partidos({ searchParams }: { searchParams: Promise
   const [cats, phases, pairs] = await Promise.all([loadCats(sb, season.id), loadPhases(sb, season.id), loadPairs(sb, season.id)]);
   const published = phases.filter((p) => ["PUBLISHED", "ACTIVE", "CLOSED", "LOCKED"].includes(p.status));
   const phase = published.find((p) => String(p.number) === sp.fase);
-  const matches = await loadMatches(sb, season.id, { phaseId: phase?.id, categoryId: sp.cat || undefined, statuses: sp.estado ? [sp.estado] : undefined });
+  const matches = await loadMatches(sb, season.id, { phaseId: phase?.id, categoryId: sp.cat || undefined, statuses: sp.estado ? sp.estado.split(",") : undefined });
   const pm = pairMap(pairs);
   const catById = new Map(cats.map((c) => [c.id, c]));
   const href = (o: { fase?: string | null; cat?: string | null; estado?: string | null }) => {
@@ -62,7 +61,7 @@ export default async function Partidos({ searchParams }: { searchParams: Promise
                         <span className={`team${sb2 ? " win" : ""}`}>{pairName(b)}</span>
                         <span className="sets">{m.sets.map((s) => s.b).join(" ")}</span>
                       </div>
-                      <div className="when">{m.scheduledAt ? `${fmtDateTime(m.scheduledAt)}${m.court ? ` · ${m.court}` : ""}` : "Sin fecha acordada"}</div>
+                      <div className="when">{matchWhen(m) || "Sin fecha acordada"}</div>
                     </Link>
                   );
                 })}

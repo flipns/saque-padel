@@ -46,14 +46,72 @@ export async function respondAction(form: FormData) {
   });
 }
 
-export async function scheduleAction(form: FormData) {
+// ---------- Coordinación de fecha ----------
+
+/** Lee hasta 5 filas día + hora (campos d1..d5, t1..t5) y las convierte a instantes (hora de Madrid). */
+function timesFrom(form: FormData): string[] {
+  const out: string[] = [];
+  for (let i = 1; i <= 5; i++) {
+    const d = str(form, `d${i}`), t = str(form, `t${i}`);
+    if (!d && !t) continue;
+    if (!d || !t) throw new Error(`Completa el día y la hora del horario ${i}.`);
+    out.push(madridToIso(d, t));
+  }
+  if (out.length === 0) throw new Error("Indica al menos un día y una hora.");
+  return out;
+}
+
+/** Propone horarios. Con replace=1 se cierran antes los de la otra pareja («ninguno me cuadra»). */
+export async function proposeAction(form: FormData) {
   const id = str(form, "match");
   const path = `/mi-liga/partido/${id}`;
+  const { sb } = await requirePlayer(path);
   await run(path, async () => {
-    const { sb } = await mine(id);
-    const date = str(form, "date"), time = str(form, "time") || "18:00";
-    const at = date ? madridToIso(date, time) : null;
-    must(await sb.rpc("set_schedule", { p_match: id, p_at: at, p_court: str(form, "court") || null }));
-    return at ? "Fecha y pista guardadas. Vuestros rivales lo verán en su partido." : "Fecha quitada.";
+    const replace = str(form, "replace") === "1";
+    must(await sb.rpc("propose_dates", { p_match: id, p_times: timesFrom(form), p_replace: replace }));
+    return replace ? "Propuesta enviada. Los horarios anteriores de vuestros rivales se han cerrado." : "Propuesta enviada. Vuestros rivales verán los horarios y podrán aceptar uno.";
+  });
+}
+
+export async function respondOptionAction(form: FormData) {
+  const id = str(form, "match");
+  const path = `/mi-liga/partido/${id}`;
+  const { sb } = await requirePlayer(path);
+  await run(path, async () => {
+    const accept = str(form, "decision") === "accept";
+    must(await sb.rpc("respond_option", { p_option: str(form, "option"), p_accept: accept }));
+    return accept ? "Fecha acordada. Ahora hay que reservar la pista y apuntarla aquí." : "Horario rechazado.";
+  });
+}
+
+export async function withdrawOptionAction(form: FormData) {
+  const id = str(form, "match");
+  const path = `/mi-liga/partido/${id}`;
+  const { sb } = await requirePlayer(path);
+  await run(path, async () => {
+    must(await sb.rpc("withdraw_option", { p_option: str(form, "option") }));
+    return "Horario retirado.";
+  });
+}
+
+/** Registra la pista reservada (el partido pasa a «Programado») o corrige pista y referencia. */
+export async function bookingAction(form: FormData) {
+  const id = str(form, "match");
+  const path = `/mi-liga/partido/${id}`;
+  const { sb } = await requirePlayer(path);
+  await run(path, async () => {
+    must(await sb.rpc("register_booking", { p_match: id, p_court: str(form, "court"), p_ref: str(form, "ref") || null }));
+    return "Pista registrada. Se avisa a los cuatro jugadores.";
+  });
+}
+
+/** «Cambiar fecha» (por ejemplo, porque no hay pista). La fecha y pista anteriores siguen vigentes hasta un nuevo acuerdo. */
+export async function changeDateAction(form: FormData) {
+  const id = str(form, "match");
+  const path = `/mi-liga/partido/${id}`;
+  const { sb } = await requirePlayer(path);
+  await run(path, async () => {
+    must(await sb.rpc("request_new_date", { p_match: id, p_reason: str(form, "reason") || null }));
+    return "Cambio de fecha iniciado. Proponed nuevos horarios; mientras tanto sigue vigente la fecha anterior, si había.";
   });
 }

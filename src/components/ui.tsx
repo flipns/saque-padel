@@ -19,7 +19,9 @@ export function Pill({ tone = "muted", children }: { tone?: Tone; children: Reac
 export const MATCH_STATUS: Record<string, { label: string; tone: Tone }> = {
   PENDING_SCHEDULE: { label: "Sin fecha", tone: "warn" },
   SCHEDULE_PROPOSED: { label: "Fecha propuesta", tone: "warn" },
-  SCHEDULED: { label: "Programado", tone: "info" },
+  DATE_AGREED: { label: "Falta pista", tone: "info" },
+  SCHEDULED: { label: "Programado", tone: "ok" },
+  RESCHEDULE_REQUESTED: { label: "Cambio de fecha", tone: "warn" },
   PLAYED_PENDING_RESULT: { label: "Falta resultado", tone: "warn" },
   RESULT_PENDING_CONFIRMATION: { label: "Por confirmar", tone: "warn" },
   DISPUTED: { label: "Impugnado", tone: "bad" },

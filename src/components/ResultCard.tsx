@@ -1,6 +1,7 @@
 import type { Cat, MatchView, PairView } from "@/lib/data";
 import { pairName } from "@/lib/data";
 import { fmtDate } from "@/lib/dates";
+import { matchWhen } from "@/lib/data";
 import { MatchPill } from "@/components/ui";
 
 /** Partido en modo lectura (el de cualquier pareja de la liga). */
@@ -18,7 +19,7 @@ export function ResultCard({ m, pairs, cat, mine, showCat = true }: { m: MatchVi
       <div className="when">
         {m.status === "WO" ? "WO" : m.status === "NOT_PLAYED" ? "No disputado" : done
           ? `${m.status === "COMPLETED" ? "Confirmado" : "Pendiente de confirmar"}${m.confirmedAt ? ` · ${fmtDate(m.confirmedAt)}` : ""}${m.endedByTime ? " · por tiempo" : ""}`
-          : m.scheduledAt ? `Programado: ${fmtDate(m.scheduledAt, { weekday: "short", day: "numeric", month: "short" })}` : "Sin jugar"}
+          : m.status === "SCHEDULED" || m.status === "DATE_AGREED" ? matchWhen(m) : "Sin jugar"}
       </div>
     </div>
   );

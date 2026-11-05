@@ -44,3 +44,11 @@ export function timeLeft(iso: string, now = Date.now()): string {
   if (h > 0) return `${h} h ${min % 60} min`;
   return `${min} min`;
 }
+
+/** «sáb, 14 nov · 11:30–13:00» (hora de Madrid). */
+export function fmtRange(iso: string, minutes = 90): string {
+  const d = new Date(iso), e = new Date(d.getTime() + minutes * 60000);
+  const day = d.toLocaleDateString("es-ES", { timeZone: TZ, weekday: "short", day: "numeric", month: "short" });
+  const hm = (x: Date) => x.toLocaleTimeString("es-ES", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false });
+  return `${day} · ${hm(d)}–${hm(e)}`;
+}

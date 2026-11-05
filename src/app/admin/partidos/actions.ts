@@ -138,7 +138,12 @@ export async function scheduleAction(form: FormData) {
     const date = str(form, "date"), time = str(form, "time") || "18:00", court = str(form, "court");
     const at = date ? madridToIso(date, time) : null;
     const patch: Record<string, unknown> = { scheduled_at: at, court: court || null, updated_at: new Date().toISOString() };
-    if (["PENDING_SCHEDULE", "SCHEDULE_PROPOSED", "SCHEDULED"].includes(m.status)) patch.status = at ? "SCHEDULED" : "PENDING_SCHEDULE";
+    if (["PENDING_SCHEDULE", "SCHEDULE_PROPOSED", "SCHEDULED", "DATE_AGREED", "RESCHEDULE_REQUESTED"].includes(m.status)) {
+      patch.status = at ? "SCHEDULED" : "PENDING_SCHEDULE";
+      patch.agreed_option_id = null; patch.agreed_start_at = null;
+      // La fecha fijada por la organización sustituye a cualquier negociación en curso.
+      must(await sb.from("match_date_options").update({ state: "SUPERSEDED" }).eq("match_id", id).in("state", ["ACTIVE", "ACCEPTED"]));
+    }
     must(await sb.from("matches").update(patch).eq("id", id));
     await audit(sb, user.email, "SCHEDULE_SET_BY_ADMIN", "match", id, { at, court });
     return at ? "Fecha y pista guardadas." : "Fecha quitada.";

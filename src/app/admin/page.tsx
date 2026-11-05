@@ -19,7 +19,8 @@ export default async function AdminHome({ searchParams }: { searchParams: Promis
   const done = live.filter((m) => ["COMPLETED", "WO", "NOT_PLAYED"].includes(m.status)).length;
   const disputed = matches.filter((m) => m.status === "DISPUTED").length;
   const toConfirm = matches.filter((m) => m.status === "RESULT_PENDING_CONFIRMATION").length;
-  const noDate = live.filter((m) => m.status === "PENDING_SCHEDULE").length;
+  const noDate = live.filter((m) => m.status === "PENDING_SCHEDULE" || m.status === "SCHEDULE_PROPOSED").length;
+  const needsCourt = live.filter((m) => m.status === "DATE_AGREED").length;
 
   let step: { kicker: string; title: string; text: string; href: string; cta: string };
   if (active.length === 0) step = { kicker: "Siguiente paso", title: "Importa las inscripciones", text: "Sube el CSV de respuestas del Google Form para crear las parejas.", href: "/admin/importar", cta: "Importar inscripciones" };
@@ -47,7 +48,8 @@ export default async function AdminHome({ searchParams }: { searchParams: Promis
         <Link className="stat" href="/admin/partidos"><b>{done}/{live.length}</b><span>Partidos cerrados{current ? ` · ${current.name.split("·")[0].trim()}` : ""}</span></Link>
         <Link className={`stat${toConfirm ? "" : ""}`} href="/admin/partidos?estado=RESULT_PENDING_CONFIRMATION"><b>{toConfirm}</b><span>Por confirmar (48 h)</span></Link>
         <Link className={`stat${disputed ? " alert" : ""}`} href="/admin/partidos?estado=DISPUTED"><b>{disputed}</b><span>Impugnados</span></Link>
-        <Link className="stat" href="/admin/partidos?estado=PENDING_SCHEDULE"><b>{noDate}</b><span>Sin fecha</span></Link>
+        <Link className="stat" href="/admin/partidos?estado=PENDING_SCHEDULE,SCHEDULE_PROPOSED"><b>{noDate}</b><span>Sin fecha acordada</span></Link>
+        <Link className="stat" href="/admin/partidos?estado=DATE_AGREED"><b>{needsCourt}</b><span>Fecha acordada, falta pista</span></Link>
       </div>
 
       <h2 className="section-title">Categorías</h2>

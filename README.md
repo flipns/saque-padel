@@ -11,6 +11,7 @@ Stack: Next.js 15 (App Router) + Supabase (Postgres, Auth con magic link, RLS, p
    - `supabase/migrations/0002_player_zone.sql` (zona de jugador, permisos más estrictos y contactos entre rivales)
    - `supabase/migrations/0003_performance.sql` (índices y permisos más rápidos; no cambia el comportamiento)
    - `supabase/migrations/0004_phase1_identity.sql` (identidad del jugador y email del compañero; solo añade)
+   - `supabase/migrations/0005_phase2_dates.sql` (propuestas de fecha, pista, cambio de fecha y avisos; solo añade y sustituye `submit_result`)
    - `supabase/seed.sql` (antes cambia `cambia-esto@ejemplo.com` por tu email de administrador; si ya lo ejecutaste, no hace falta repetirlo)
    - Si `create extension pg_cron` falla, actívala en *Database → Extensions* y vuelve a ejecutar las dos últimas líneas de la migración.
 2. **Auth** (*Authentication*):
@@ -79,10 +80,20 @@ Pendiente: grupos jerárquicos de la Race (febrero), ventana de cambios de parej
 Según el anexo funcional V2 (4/11/2026) y las decisiones del club:
 
 - **Fase 1 (hecha):** toda la liga visible para los jugadores (clasificación, grupos y resultados de las 8 categorías, ranking de ambas divisiones, últimos resultados en el inicio), «¿Quién eres?», alta del email del compañero y aviso para menores.
-- **Fase 2:** propuestas de hasta 5 fechas, aceptar/rechazar/proponer otras 5, cambiar fecha y registro de pista. Sin representantes: quien propone queda conforme y cualquier jugador de la otra pareja acepta.
+- **Fase 2 (hecha):** propuestas de hasta 5 horarios, aceptar/rechazar, «ninguno me cuadra» (cierra los del rival y propone otros), retirar, fecha acordada → pista reservada → programado, cambio de fecha con la anterior vigente, y avisos dentro de la web. Sin representantes: quien propone queda conforme y cualquier jugador de la otra pareja acepta. Máximo 5 horarios activos por partido a la vez (anexo RF-COORD-02).
 - **Fase 3:** avisos por email (con el Gmail del club, no hay dominio propio).
 - **Fase 4:** chat de cuatro por partido, también con menores (el menor entra con el email del tutor).
 - **Fase 5:** calendario de disponibilidad y cruce automático 4/4.
 - **Fase 6:** incidencias y administración avanzada.
 
 Si un jugador es menor, márcalo en *Panel → Parejas → (pareja) → «Menor de edad»*. Su móvil no se muestra nunca y se tendrá en cuenta en el chat.
+
+### Cómo funciona la coordinación de fecha (Fase 2)
+
+Estados del partido: sin fecha → con propuestas → **fecha acordada (falta pista)** → **programado** → (cambio de fecha) → …
+- Cada horario dura 90 minutos y debe caer dentro de la fase (hasta el día 5 del mes siguiente) y en el futuro.
+- Aceptar un horario descarta los demás. Registrar la pista lo programa. Si no hay pista, «buscar otra fecha» reabre la negociación.
+- En un cambio de fecha, la fecha y pista anteriores siguen vigentes hasta que haya un nuevo acuerdo y una nueva reserva.
+- Los jugadores ya no fijan la fecha directamente (`set_schedule` queda solo para la organización desde el panel).
+- Los avisos se guardan en la tabla `notifications` (con `emailed_at` listo para la Fase 3).
+- Solo los cuatro jugadores del partido y la administración ven las propuestas.

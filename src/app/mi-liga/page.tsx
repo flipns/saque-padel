@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requirePlayer } from "@/lib/auth";
-import { getSeasonRow, loadCats, loadPairs, loadMatches, loadOpenSubmissions, loadGroups, loadPhases, loadRecentResults, categoryStandings, pairMap, pairName } from "@/lib/data";
+import { getSeasonRow, loadCats, loadPairs, loadMatches, loadOpenSubmissions, loadGroups, loadPhases, loadRecentResults, categoryStandings, matchWhen, pairMap, pairName } from "@/lib/data";
 import { CatDot, Flash, MatchPill } from "@/components/ui";
 import { fmtDate, fmtDateTime, timeLeft } from "@/lib/dates";
 import { ResultCard } from "@/components/ResultCard";
@@ -27,13 +27,15 @@ export default async function MiLiga({ searchParams }: { searchParams: Promise<{
   const cat = cats.find((c) => c.id === me.categoryId)!;
   const published = phases.filter((p) => ["PUBLISHED", "ACTIVE", "CLOSED", "LOCKED"].includes(p.status));
   const current = published[published.length - 1];
-  const [catPairs, matches, standing, groups, identity, allPairs, recent] = await Promise.all([
+  const [catPairs, matches, standing, groups, identity, allPairs, recent, unreadRes] = await Promise.all([
     loadPairs(sb, season.id, { categoryId: me.categoryId }), loadMatches(sb, season.id, { pairIds: [pid] }), categoryStandings(sb, season, me.categoryId),
     current ? loadGroups(sb, current.id) : Promise.resolve([]),
     sb.rpc("pair_identity", { p_pair: pid }),
     loadPairs(sb, season.id),
     loadRecentResults(sb, season.id, { limit: 6 }),
+    sb.from("notifications").select("id", { count: "exact", head: true }).is("read_at", null),
   ]);
+  const unread = unreadRes.count ?? 0;
   const allPairsMap = pairMap(allPairs);
   const catById = new Map(cats.map((c) => [c.id, c]));
   const pm = pairMap(catPairs);
@@ -67,6 +69,13 @@ export default async function MiLiga({ searchParams }: { searchParams: Promise<{
       </section>
 
       <PairSetup pairId={pid} rows={(identity.data ?? []) as any[]} siteUrl={process.env.NEXT_PUBLIC_SITE_URL ?? ""} />
+
+      {unread > 0 && (
+        <div className={s.alert} role="status">
+          <span><b>Tienes {unread} {unread === 1 ? "aviso nuevo" : "avisos nuevos"}</b> sobre tus partidos.</span>
+          <Link href="/mi-liga/avisos">Verlos</Link>
+        </div>
+      )}
 
       {toConfirm.length > 0 && (
         <div className={s.alert} role="status">
@@ -106,7 +115,7 @@ export default async function MiLiga({ searchParams }: { searchParams: Promise<{
                         <span className={`team${m.winner === side ? " win" : ""}`}>Vosotros</span><span className="sets">{my.join(" ")}</span>
                         <span className={`team${m.winner && m.winner !== side ? " win" : ""}`}>{pairName(rival)}</span><span className="sets">{their.join(" ")}</span>
                       </div>
-                      <div className="when">{m.scheduledAt ? `${fmtDateTime(m.scheduledAt)}${m.court ? ` · ${m.court}` : ""}` : "Sin fecha: acordadla con vuestros rivales"}</div>
+                      <div className="when">{matchWhen(m)}</div>
                     </Link>
                   );
                 })}
