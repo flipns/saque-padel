@@ -163,6 +163,13 @@ export async function loadOpenSubmissions(sb: SB, matchIds: string[]) {
   return out;
 }
 
+/** Últimos resultados (confirmados y pendientes de confirmar), más recientes primero. De una categoría o de toda la liga. */
+export async function loadRecentResults(sb: SB, seasonId: string, opts: { categoryId?: string; limit?: number } = {}) {
+  const ms = await loadMatches(sb, seasonId, { categoryId: opts.categoryId, statuses: ["COMPLETED", "RESULT_PENDING_CONFIRMATION"] });
+  const when = (m: MatchView) => new Date(m.confirmedAt ?? m.updatedAt).getTime();
+  return [...ms].sort((a, b) => when(b) - when(a)).slice(0, opts.limit ?? 10);
+}
+
 // ---------- Grupos ----------
 
 export async function loadGroups(sb: SB, phaseId: string) {

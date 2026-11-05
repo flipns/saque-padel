@@ -26,6 +26,7 @@ export default async function Acceso({ searchParams }: { searchParams: Promise<{
         <p className="muted">Usa el email con el que se inscribió tu pareja. Si el jugador es menor, el del tutor.</p>
         {error && <p role="alert" className="error">El enlace ha caducado o ya se usó. Pide uno nuevo.</p>}
         <LoginForm next={next} />
+        <p className="help" style={{ marginTop: "1.25rem", marginBottom: 0 }}>Si eres menor, entras bajo la autorización de tu tutor, padre o madre.</p>
       </div>
     </main>
   );

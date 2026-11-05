@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { requirePlayer } from "@/lib/auth";
 import { LigaNav } from "./LigaNav";
+import { MinorNotice } from "@/components/MinorNotice";
 import s from "./liga.module.css";
 
 export const metadata = { title: "Mi liga · SAQUE LEAGUE" };
@@ -17,7 +18,7 @@ export default async function LigaLayout({ children }: { children: React.ReactNo
           <div className={s.user}>{isAdmin && <Link href="/admin" style={{ marginRight: ".5rem" }}>Panel</Link>}<Link href="/cuenta">Mi cuenta</Link></div>
         </div>
       </header>
-      <main className={s.main}>{children}</main>
+      <main className={s.main}><MinorNotice />{children}</main>
     </div>
   );
 }

@@ -178,3 +178,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .table-scroll table { min-width: 600px; }
 td.name { min-width: 13rem; }
 .mini-form .btn-sm { min-height: 30px; padding: .25rem .7rem; border-radius: 8px; }
+
+.notice-minor { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem 1rem; background: var(--blue-soft); color: var(--navy); border-radius: var(--radius); padding: .8rem 1.1rem; margin-bottom: 1rem; font-size: var(--step--1); }
+
+.table-scroll.compact table { min-width: 0; }

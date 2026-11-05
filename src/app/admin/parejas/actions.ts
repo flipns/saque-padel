@@ -42,8 +42,11 @@ export async function updatePairAction(form: FormData) {
       must(await sb.from("player_contacts").upsert({ player_id: m.player_id, phone: phone(str(form, `phone${i + 1}`)) || null }, { onConflict: "player_id" }));
     }
     must(await sb.from("pairs").update({ category_id: newCat.id, status }).eq("id", id));
-    must(await sb.from("pair_access").delete().eq("pair_id", id));
-    must(await sb.from("pair_access").insert(emails.map((email) => ({ pair_id: id, email }))));
+    // Se actualiza solo la diferencia, para no perder qué jugador es cada email ni quién lo añadió.
+    const current = (must(await sb.from("pair_access").select("email").eq("pair_id", id)) as any[]).map((r) => r.email as string);
+    const toDelete = current.filter((e) => !emails.includes(e)), toAdd = emails.filter((e) => !current.includes(e));
+    if (toDelete.length) must(await sb.from("pair_access").delete().eq("pair_id", id).in("email", toDelete));
+    if (toAdd.length) must(await sb.from("pair_access").insert(toAdd.map((email) => ({ pair_id: id, email }))));
     await audit(sb, user.email, "PAIR_UPDATED", "pair", id, { category: newCat.label, status, emails });
     const notes: string[] = [];
     if (oldCat && oldCat.id !== newCat.id) notes.push("La pareja cambió de categoría: revisa sus grupos en Grupos (no se mueve sola).");

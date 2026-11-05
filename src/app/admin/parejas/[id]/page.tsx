@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { getSeasonRow, loadCats, loadPairs, loadMatches, pairMap, pairName, setsText } from "@/lib/data";
+import { fmtDate } from "@/lib/dates";
 import { Flash, MatchPill, PageHead } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { updatePairAction } from "../actions";
@@ -12,8 +13,9 @@ export default async function ParejaPage({ params, searchParams }: { params: Pro
   const { sb } = await requireAdmin(`/admin/parejas/${id}`);
   const season = await getSeasonRow(sb);
   if (!season) notFound();
-  const [cats, pairs, matches] = await Promise.all([
+  const [cats, pairs, matches, accessRes] = await Promise.all([
     loadCats(sb, season.id), loadPairs(sb, season.id, { contacts: true, emails: true }), loadMatches(sb, season.id, { pairIds: [id] }),
+    sb.from("pair_access").select("email, player_id, added_by, added_at").eq("pair_id", id).order("added_at"),
   ]);
   const pm = pairMap(pairs);
   const pair = pm.get(id);
@@ -53,6 +55,19 @@ export default async function ParejaPage({ params, searchParams }: { params: Pro
           </div>
           <div style={{ marginTop: "1rem" }}><SubmitButton>Guardar cambios</SubmitButton></div>
         </form>
+      </div>
+
+      <h2 className="section-title">Accesos</h2>
+      <div className="card">
+        <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+          {((accessRes.data ?? []) as any[]).map((a) => (
+            <li key={a.email}>
+              <b>{a.email}</b> · {pair.players.find((p) => p.id === a.player_id)?.name ?? "jugador sin indicar"}
+              {a.added_by ? <span className="muted"> · añadido por {a.added_by} el {fmtDate(a.added_at)}</span> : <span className="muted"> · inscripción</span>}
+            </li>
+          ))}
+        </ul>
+        <p className="help" style={{ marginBottom: 0 }}>Para quitar o cambiar un email, edítalo arriba en «Emails con acceso».</p>
       </div>
 
       <h2 className="section-title">Partidos de la pareja</h2>

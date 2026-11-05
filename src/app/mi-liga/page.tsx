@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { requirePlayer } from "@/lib/auth";
-import { getSeasonRow, loadCats, loadPairs, loadMatches, loadOpenSubmissions, loadGroups, loadPhases, categoryStandings, pairMap, pairName } from "@/lib/data";
+import { getSeasonRow, loadCats, loadPairs, loadMatches, loadOpenSubmissions, loadGroups, loadPhases, loadRecentResults, categoryStandings, pairMap, pairName } from "@/lib/data";
 import { CatDot, Flash, MatchPill } from "@/components/ui";
 import { fmtDate, fmtDateTime, timeLeft } from "@/lib/dates";
+import { ResultCard } from "@/components/ResultCard";
+import { PairSetup } from "./PairSetup";
 import s from "./liga.module.css";
 
 export default async function MiLiga({ searchParams }: { searchParams: Promise<{ p?: string; ok?: string; err?: string }> }) {
@@ -25,10 +27,15 @@ export default async function MiLiga({ searchParams }: { searchParams: Promise<{
   const cat = cats.find((c) => c.id === me.categoryId)!;
   const published = phases.filter((p) => ["PUBLISHED", "ACTIVE", "CLOSED", "LOCKED"].includes(p.status));
   const current = published[published.length - 1];
-  const [catPairs, matches, standing, groups] = await Promise.all([
+  const [catPairs, matches, standing, groups, identity, allPairs, recent] = await Promise.all([
     loadPairs(sb, season.id, { categoryId: me.categoryId }), loadMatches(sb, season.id, { pairIds: [pid] }), categoryStandings(sb, season, me.categoryId),
     current ? loadGroups(sb, current.id) : Promise.resolve([]),
+    sb.rpc("pair_identity", { p_pair: pid }),
+    loadPairs(sb, season.id),
+    loadRecentResults(sb, season.id, { limit: 6 }),
   ]);
+  const allPairsMap = pairMap(allPairs);
+  const catById = new Map(cats.map((c) => [c.id, c]));
   const pm = pairMap(catPairs);
   const subs = await loadOpenSubmissions(sb, matches.map((m) => m.id));
   const myRow = standing.rows.find((r) => r.pairId === pid);
@@ -58,6 +65,8 @@ export default async function MiLiga({ searchParams }: { searchParams: Promise<{
         )}
         {matches.length > 0 && <p style={{ margin: ".9rem 0 0" }}><Link href={`/mi-liga/clasificacion?p=${pid}`}>Ver la clasificación completa →</Link></p>}
       </section>
+
+      <PairSetup pairId={pid} rows={(identity.data ?? []) as any[]} siteUrl={process.env.NEXT_PUBLIC_SITE_URL ?? ""} />
 
       {toConfirm.length > 0 && (
         <div className={s.alert} role="status">
@@ -105,6 +114,16 @@ export default async function MiLiga({ searchParams }: { searchParams: Promise<{
             </section>
           ))}
         </>
+      )}
+
+      {recent.length > 0 && (
+        <section style={{ marginTop: "2rem" }} aria-labelledby="ultimos">
+          <h2 id="ultimos" className="section-title" style={{ marginTop: 0 }}>Últimos resultados de la liga</h2>
+          <div className="matches">
+            {recent.map((m) => <ResultCard key={m.id} m={m} pairs={allPairsMap} cat={catById.get(m.categoryId)} mine={new Set(pairIds)} />)}
+          </div>
+          <p style={{ margin: "1rem 0 0" }}><Link href="/mi-liga/liga?vista=resultados"><b>Ver todos los resultados →</b></Link></p>
+        </section>
       )}
     </>
   );

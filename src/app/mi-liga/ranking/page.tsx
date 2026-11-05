@@ -1,26 +1,30 @@
+import Link from "next/link";
 import { requirePlayer } from "@/lib/auth";
-import { getSeasonRow, loadCats, loadPairs, loadRanking } from "@/lib/data";
+import { loadBase, loadPairs, loadRanking, type Division } from "@/lib/data";
 
-export default async function RankingJugador({ searchParams }: { searchParams: Promise<{ p?: string; q?: string }> }) {
+export default async function RankingJugador({ searchParams }: { searchParams: Promise<{ div?: string; q?: string }> }) {
   const sp = await searchParams;
   const { sb, pairIds } = await requirePlayer("/mi-liga/ranking");
-  const season = await getSeasonRow(sb);
-  if (!season) return null;
-  if (pairIds.length === 0) return <p className="card empty">Tu email no tiene pareja inscrita.</p>;
-  const pid = pairIds.includes(sp.p ?? "") ? (sp.p as string) : pairIds[0];
-  const [cats, mine] = await Promise.all([loadCats(sb, season.id), loadPairs(sb, season.id, { ids: [pid] })]);
-  const cat = cats.find((c) => c.id === mine[0].categoryId)!;
-  const all = (await loadRanking(sb, season, cats, cat.division)).map((r, i) => ({ ...r, pos: i + 1 }));
-  const mineIds = new Set(mine[0].players.map((p) => p.id));
+  const base = await loadBase(sb);
+  if (!base) return null;
+  const { season, cats } = base;
+  const mine = pairIds.length ? await loadPairs(sb, season.id, { ids: pairIds }) : [];
+  const myDivision = cats.find((c) => c.id === mine[0]?.categoryId)?.division ?? "MASCULINA";
+  const division: Division = sp.div === "FEMENINA" || sp.div === "MASCULINA" ? sp.div : myDivision;
+  const all = (await loadRanking(sb, season, cats, division)).map((r, i) => ({ ...r, pos: i + 1 }));
+  const mineIds = new Set(mine.flatMap((p) => p.players.map((x) => x.id)));
   const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const q = norm(sp.q ?? "");
   const rows = all.filter((r) => !q || norm(r.name).includes(q));
   return (
     <>
       <h1 style={{ fontSize: "var(--step-2)", fontWeight: 900, textTransform: "uppercase" }}>Ranking general</h1>
-      <p className="muted" style={{ margin: ".3rem 0 1rem" }}>Ranking individual {cat.division === "FEMENINA" ? "femenino" : "masculino"}. Sube y baja con cada partido confirmado y se mantiene toda la temporada.</p>
+      <p className="muted" style={{ margin: ".3rem 0 1rem" }}>Ranking individual. Sube y baja con cada partido confirmado y se mantiene toda la temporada.</p>
+      <nav className="chips" aria-label="División">
+        {(["MASCULINA", "FEMENINA"] as const).map((d) => <Link key={d} className="chip" href={`/mi-liga/ranking?div=${d}`} aria-current={division === d}>{d === "MASCULINA" ? "Masculino" : "Femenino"}</Link>)}
+      </nav>
       <form method="get" style={{ maxWidth: 380, marginBottom: "1rem" }}>
-        <input type="hidden" name="p" value={pid} />
+        <input type="hidden" name="div" value={division} />
         <label htmlFor="q" className="sr-only">Buscar jugador</label>
         <input id="q" name="q" type="search" defaultValue={sp.q ?? ""} placeholder="Buscar jugador" />
       </form>
