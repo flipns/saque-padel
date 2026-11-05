@@ -115,3 +115,14 @@ export async function changeDateAction(form: FormData) {
     return "Cambio de fecha iniciado. Proponed nuevos horarios; mientras tanto sigue vigente la fecha anterior, si había.";
   });
 }
+
+/** «¿Quién eres?» desde el propio chat: vincula el email con el jugador y vuelve al partido. */
+export async function claimHereAction(form: FormData) {
+  const id = str(form, "match");
+  const path = `/mi-liga/partido/${id}`;
+  const { sb } = await requirePlayer(path);
+  await run(path, async () => {
+    must(await sb.rpc("claim_identity", { p_pair: str(form, "pair"), p_player: str(form, "player") }));
+    return "Listo, ya puedes escribir en el chat.";
+  });
+}

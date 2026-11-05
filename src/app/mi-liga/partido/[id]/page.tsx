@@ -6,7 +6,9 @@ import { Flash, MatchPill } from "@/components/ui";
 import { ScoreInputs } from "@/components/ScoreInputs";
 import { SubmitButton } from "@/components/SubmitButton";
 import { isoToMadridParts, timeLeft } from "@/lib/dates";
-import { respondAction, submitResultAction } from "../actions";
+import { claimHereAction, respondAction, submitResultAction } from "../actions";
+import { Chat } from "./Chat";
+import { CHAT_CLOSED, loadChat } from "@/lib/chat";
 import { Scheduling } from "./Scheduling";
 
 export default async function Partido({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
@@ -21,11 +23,16 @@ export default async function Partido({ params, searchParams }: { params: Promis
   const base = await loadBase(sb);
   const cats = base?.cats ?? [];
   const phase = base?.phases.find((p) => p.id === m.phaseId);
-  const [pairs, subs, contacts, options, bookRes] = await Promise.all([
+  const myPairId = side === "A" ? m.pairA : m.pairB;
+  const [pairs, subs, contacts, options, bookRes, chatMsgs, identityRes] = await Promise.all([
     loadPairs(sb, season.id, { ids: [m.pairA, m.pairB] }), loadOpenSubmissions(sb, [id]),
     sb.rpc("rival_contacts", { p_match: id }), loadOptions(sb, id),
     sb.from("matches").select("booking_ref").eq("id", id).maybeSingle(),
+    loadChat(sb, id), sb.rpc("pair_identity", { p_pair: myPairId }),
   ]);
+  const identityRows = ((identityRes.data ?? []) as { player_id: string; full_name: string; is_me: boolean }[]);
+  const needsIdentity = !identityRows.some((r) => r.is_me);
+  const negotiable = !["COMPLETED", "WO", "NOT_PLAYED"].includes(m.status) && m.status !== "DISPUTED" && m.status !== "RESULT_PENDING_CONFIRMATION";
   const today = isoToMadridParts(new Date().toISOString()).date;
   const minDay = phase && phase.starts_on > today ? phase.starts_on : today;
   const maxDay = phase?.results_deadline ?? today;
@@ -90,7 +97,7 @@ export default async function Partido({ params, searchParams }: { params: Promis
         </div>
       )}
 
-      {!closed && m.status !== "DISPUTED" && m.status !== "RESULT_PENDING_CONFIRMATION" && (
+      {negotiable && (
         <>
           {(contacts.data as any[] | null)?.length ? (
             <div className="card" style={{ marginTop: "1rem" }}>
@@ -103,7 +110,30 @@ export default async function Partido({ params, searchParams }: { params: Promis
             </div>
           ) : null}
           <Scheduling m={m} options={options} myPairId={side === "A" ? m.pairA : m.pairB} rivalName={pairName(rival)} minDay={minDay} maxDay={maxDay} bookingRef={(bookRes.data as any)?.booking_ref ?? null} />
+        </>
+      )}
 
+      <div className="card" style={{ marginTop: "1rem" }}>
+        <h2 style={{ fontSize: "1.1rem", marginBottom: ".25rem" }}>Chat del partido</h2>
+        <p className="chat-note">Lo ven solo los cuatro jugadores y la organización, que puede moderarlo. Usadlo para acordar el partido. Si eres menor, participas con la autorización de tu tutor.</p>
+        <Chat matchId={id} initial={chatMsgs} myPairId={myPairId} canWrite={!CHAT_CLOSED.includes(m.status)}
+          closedNote="El partido está cerrado: el chat queda solo de lectura."
+          identity={needsIdentity && !CHAT_CLOSED.includes(m.status) ? (
+            <div className="callout" style={{ marginTop: ".75rem", marginBottom: 0 }}>
+              <b>Para escribir en el chat, indica quién eres.</b>
+              <div className="actions" style={{ marginTop: ".6rem" }}>
+                {identityRows.map((r) => (
+                  <form key={r.player_id} action={claimHereAction}>
+                    <input type="hidden" name="match" value={id} /><input type="hidden" name="pair" value={myPairId} /><input type="hidden" name="player" value={r.player_id} />
+                    <SubmitButton className="btn btn-outline btn-sm" confirm={`¿Confirmas que eres ${r.full_name}? Solo se puede cambiar avisando a la organización.`}>Soy {r.full_name}</SubmitButton>
+                  </form>
+                ))}
+              </div>
+            </div>
+          ) : undefined} />
+      </div>
+
+      {negotiable && (
           <div className="card" style={{ marginTop: "1rem" }}>
             <h2 style={{ fontSize: "1.1rem", marginBottom: ".25rem" }}>Introducir el resultado</h2>
             <p className="muted" style={{ margin: "0 0 1rem" }}>Lo introduce la pareja <b>ganadora</b>. Vuestros rivales tendrán 48 horas para confirmarlo.</p>
@@ -114,7 +144,6 @@ export default async function Partido({ params, searchParams }: { params: Promis
               <SubmitButton>Enviar resultado</SubmitButton>
             </form>
           </div>
-        </>
       )}
     </>
   );

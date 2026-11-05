@@ -24,9 +24,10 @@ export async function GET(req: NextRequest) {
   if (!authorized(req, secret)) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const db = supabaseAdmin();
-  const [rem, auto] = await Promise.all([db.rpc("generate_reminders"), db.rpc("auto_confirm_due")]);
+  const [rem, auto, purge] = await Promise.all([db.rpc("generate_reminders"), db.rpc("auto_confirm_due"), db.rpc("purge_expired_chats")]);
   if (rem.error) console.error("generate_reminders failed", rem.error.message);
   if (auto.error) console.error("auto_confirm_due failed", auto.error.message);
+  if (purge.error) console.error("purge_expired_chats failed", purge.error.message);
   const emails = await flushEmails({ limit: 400 });
-  return NextResponse.json({ reminders: rem.data ?? 0, autoConfirmed: auto.data ?? 0, emails });
+  return NextResponse.json({ reminders: rem.data ?? 0, autoConfirmed: auto.data ?? 0, chatsPurged: purge.data ?? 0, emails });
 }

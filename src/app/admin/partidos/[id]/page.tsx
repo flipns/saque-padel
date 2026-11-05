@@ -7,6 +7,7 @@ import { Flash, MatchPill, PageHead } from "@/components/ui";
 import { ScoreInputs } from "@/components/ScoreInputs";
 import { SubmitButton } from "@/components/SubmitButton";
 import { fmtDateTime, fmtRange, isoToMadridParts, timeLeft } from "@/lib/dates";
+import { AdminChat, type AdminMessage } from "./AdminChat";
 import { acceptSubmittedAction, notPlayedAction, resetAction, scheduleAction, setResultAction, woAction } from "../actions";
 
 export default async function PartidoAdmin({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
@@ -17,7 +18,10 @@ export default async function PartidoAdmin({ params, searchParams }: { params: P
   if (!season) notFound();
   const m = (await loadMatches(sb, season.id, { id }))[0];
   if (!m) notFound();
-  const [cats, pairs, subs, options] = await Promise.all([loadCats(sb, season.id), loadPairs(sb, season.id), loadOpenSubmissions(sb, [id]), loadOptions(sb, id)]);
+  const [cats, pairs, subs, options, chatRes] = await Promise.all([
+    loadCats(sb, season.id), loadPairs(sb, season.id), loadOpenSubmissions(sb, [id]), loadOptions(sb, id),
+    sb.from("match_messages").select("id, kind, author_name, body, created_at, deleted_at, deleted_by, delete_reason").eq("match_id", id).order("created_at").limit(500),
+  ]);
   const pm = pairMap(pairs);
   const a = pm.get(m.pairA), b = pm.get(m.pairB);
   const cat = cats.find((c) => c.id === m.categoryId);
@@ -82,6 +86,8 @@ export default async function PartidoAdmin({ params, searchParams }: { params: P
           </table></div>
         </div>
       )}
+
+      <AdminChat matchId={id} messages={(chatRes.data ?? []) as AdminMessage[]} hasMinors={[a, b].some((p) => p?.players.some((x) => x.isMinor))} />
 
       <div className="card">
         <h2 style={{ fontSize: "1.1rem", marginBottom: ".25rem" }}>{closed || sub ? "Corregir o fijar el resultado" : "Fijar el resultado"}</h2>

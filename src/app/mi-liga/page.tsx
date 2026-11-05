@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requirePlayer } from "@/lib/auth";
 import { getSeasonRow, loadCats, loadPairs, loadMatches, loadOpenSubmissions, loadGroups, loadPhases, loadRecentResults, categoryStandings, matchWhen, pairMap, pairName } from "@/lib/data";
-import { CatDot, Flash, MatchPill } from "@/components/ui";
+import { CatDot, Flash, MatchPill, Pill } from "@/components/ui";
 import { fmtDate, fmtDateTime, timeLeft } from "@/lib/dates";
 import { ResultCard } from "@/components/ResultCard";
 import { PairSetup } from "./PairSetup";
@@ -27,14 +27,16 @@ export default async function MiLiga({ searchParams }: { searchParams: Promise<{
   const cat = cats.find((c) => c.id === me.categoryId)!;
   const published = phases.filter((p) => ["PUBLISHED", "ACTIVE", "CLOSED", "LOCKED"].includes(p.status));
   const current = published[published.length - 1];
-  const [catPairs, matches, standing, groups, identity, allPairs, recent, unreadRes] = await Promise.all([
+  const [catPairs, matches, standing, groups, identity, allPairs, recent, unreadRes, chatUnreadRes] = await Promise.all([
     loadPairs(sb, season.id, { categoryId: me.categoryId }), loadMatches(sb, season.id, { pairIds: [pid] }), categoryStandings(sb, season, me.categoryId),
     current ? loadGroups(sb, current.id) : Promise.resolve([]),
     sb.rpc("pair_identity", { p_pair: pid }),
     loadPairs(sb, season.id),
     loadRecentResults(sb, season.id, { limit: 6 }),
     sb.from("notifications").select("id", { count: "exact", head: true }).is("read_at", null),
+    sb.rpc("chat_unread_counts"),
   ]);
+  const chatUnread = new Map(((chatUnreadRes.data ?? []) as { match_id: string; unread: number | string }[]).map((r) => [r.match_id, Number(r.unread)]));
   const unread = unreadRes.count ?? 0;
   const allPairsMap = pairMap(allPairs);
   const catById = new Map(cats.map((c) => [c.id, c]));
@@ -110,7 +112,7 @@ export default async function MiLiga({ searchParams }: { searchParams: Promise<{
                   const my = m.sets.map((x) => (side === "A" ? x.a : x.b)), their = m.sets.map((x) => (side === "A" ? x.b : x.a));
                   return (
                     <Link key={m.id} href={`/mi-liga/partido/${m.id}`} className="match">
-                      <div className="meta"><span>Grupo {m.groupLetter}</span><MatchPill status={m.status} /></div>
+                      <div className="meta"><span>Grupo {m.groupLetter}</span><span style={{ display: "inline-flex", gap: ".4rem", alignItems: "center" }}>{(chatUnread.get(m.id) ?? 0) > 0 && <Pill tone="info">{chatUnread.get(m.id)} {chatUnread.get(m.id) === 1 ? "mensaje nuevo" : "mensajes nuevos"}</Pill>}<MatchPill status={m.status} /></span></div>
                       <div className="teams">
                         <span className={`team${m.winner === side ? " win" : ""}`}>Vosotros</span><span className="sets">{my.join(" ")}</span>
                         <span className={`team${m.winner && m.winner !== side ? " win" : ""}`}>{pairName(rival)}</span><span className="sets">{their.join(" ")}</span>
