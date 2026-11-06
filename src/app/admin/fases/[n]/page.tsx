@@ -6,7 +6,7 @@ import { pairKey } from "@/lib/engine";
 import { CatDot, Flash, MatchPill, PageHead, PhasePill } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { fmtDate } from "@/lib/dates";
-import { addToGroupAction, generateAction, moveAction, publishAction, unpublishAction } from "../actions";
+import { addToGroupAction, createGroupAction, deleteEmptyGroupAction, generateAction, moveAction, publishAction, unpublishAction } from "../actions";
 
 export const maxDuration = 60; // al publicar se envían muchos emails tras responder
 
@@ -31,6 +31,7 @@ export default async function FasePage({ params, searchParams }: { params: Promi
   const editable = phase.status === "DRAFT" || phase.status === "GENERATED";
   const published = ["PUBLISHED", "ACTIVE", "CLOSED", "LOCKED"].includes(phase.status);
   const title = phase.name.split("·")[1]?.trim() ?? phase.name;
+  const canEditGroups = isLeveling && ["GENERATED", "PUBLISHED", "ACTIVE"].includes(phase.status);
 
   return (
     <>
@@ -95,7 +96,7 @@ export default async function FasePage({ params, searchParams }: { params: Promi
         const hist = histories.get(c.id) ?? { history: new Set<string>(), small: new Set<string>() };
         const warnings: string[] = [];
         for (const g of cg) {
-          if (g.pairIds.length > 0 && (g.pairIds.length < 3 || g.pairIds.length > 4)) warnings.push(`El grupo ${g.letter} tiene ${g.pairIds.length} parejas.`);
+          if (g.pairIds.length > 0 && (g.pairIds.length < 3 || g.pairIds.length > 4)) warnings.push(`El grupo ${g.letter} tiene ${g.pairIds.length} parejas${g.pairIds.length < 3 ? ` (cada pareja jugará solo ${g.pairIds.length - 1} ${g.pairIds.length - 1 === 1 ? "partido" : "partidos"})` : ""}.`);
           for (let i = 0; i < g.pairIds.length; i++) for (let j = i + 1; j < g.pairIds.length; j++)
             if (hist.history.has(pairKey(g.pairIds[i], g.pairIds[j]))) warnings.push(`Grupo ${g.letter}: ${pairName(pm.get(g.pairIds[i]))} y ${pairName(pm.get(g.pairIds[j]))} ya se enfrentaron.`);
         }
@@ -109,6 +110,12 @@ export default async function FasePage({ params, searchParams }: { params: Promi
                 <h2 style={{ display: "flex", alignItems: "center", gap: ".5rem", fontSize: "1.15rem" }}><CatDot code={c.code} />{c.label}</h2>
                 <p className="muted" style={{ margin: ".2rem 0 0", fontSize: "var(--step--1)" }}>{catPairs.length} parejas · {groupsText(catPairs.length)}</p>
               </div>
+              {canEditGroups && (
+                <form action={createGroupAction}>
+                  <input type="hidden" name="phase" value={n} /><input type="hidden" name="cat" value={c.id} />
+                  <SubmitButton className="btn btn-outline btn-sm" pendingText="Creando…">+ Crear grupo nuevo</SubmitButton>
+                </form>
+              )}
               {isLeveling && editable && cg.length > 0 && (
                 <form action={generateAction}>
                   <input type="hidden" name="phase" value={n} /><input type="hidden" name="cat" value={c.id} />
@@ -143,6 +150,12 @@ export default async function FasePage({ params, searchParams }: { params: Promi
                         </li>
                       ))}
                     </ul>
+                    {g.pairIds.length === 0 && (
+                      <div style={{ marginTop: ".5rem" }}>
+                        <p className="subtle" style={{ margin: "0 0 .5rem" }}>Grupo vacío: añádele parejas sin grupo{loose.length ? "" : " (ahora no hay ninguna en esta categoría)"}.</p>
+                        {canEditGroups && <form action={deleteEmptyGroupAction}><input type="hidden" name="phase" value={n} /><input type="hidden" name="group" value={g.id} /><SubmitButton className="btn btn-outline btn-sm" confirm={`¿Eliminar el grupo ${g.letter}?`}>Eliminar grupo vacío</SubmitButton></form>}
+                      </div>
+                    )}
                     {gm.length > 0 && (
                       <p style={{ margin: ".7rem 0 0", display: "flex", gap: ".35rem", flexWrap: "wrap" }}>
                         {(["COMPLETED", "RESULT_PENDING_CONFIRMATION", "DISPUTED", "PENDING_SCHEDULE"] as const).map((st) => {

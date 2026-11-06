@@ -16,6 +16,7 @@ Stack: Next.js 15 (App Router) + Supabase (Postgres, Auth con magic link, RLS, p
    - `supabase/migrations/0007_phase4_chat.sql` (chat por partido; solo añade y sustituye `auto_confirm_due`)
    - `supabase/migrations/0008_phase5_availability.sql` (disponibilidad semanal; solo añade y sustituye `notify_phase_published`)
    - `supabase/migrations/0009_phase5b_exceptions.sql` (preferencias, excepciones por fecha y avisos de cambios; solo añade y sustituye `save_availability`)
+   - `supabase/migrations/0010_result_corrections.sql` (impugnar con resultado exacto, corregir y retirar resultados; solo añade y sustituye `submit_result`, `respond_result` y `audit_to_chat`). **Ejecútala antes de desplegar el código nuevo.**
    - `supabase/seed.sql` (antes cambia `cambia-esto@ejemplo.com` por tu email de administrador; si ya lo ejecutaste, no hace falta repetirlo)
    - Si `create extension pg_cron` falla, actívala en *Database → Extensions* y vuelve a ejecutar las dos últimas líneas de la migración.
 2. **Auth** (*Authentication*):
@@ -147,3 +148,18 @@ Variables de entorno en Vercel (Settings → Environment Variables) y después *
 - **Cada horario propuesto lleva una indicación** de cómo encaja con los calendarios (encaja con los 4, falta confirmar a alguien, posible conflicto, o no consta disponibilidad completa). Solo orienta: nunca borra una propuesta ni revoca una aceptación.
 - **Avisos de cambios relevantes:** la primera vez que un jugador rellena su disponibilidad (un aviso por persona), y un posible conflicto cuando alguien bloquea una fecha que es uno de los horarios propuestos o la fecha acordada. No incluyen el motivo.
 - El panel (Resumen → «Jugadores sin disponibilidad») cuenta a quien tiene semana tipo; quien solo ha puesto excepciones figura como «sin informar».
+
+### Resultados: impugnar con versión, corregir y retirar
+
+- **Impugnar:** además del motivo, la pareja que impugna puede escribir el **resultado exacto** que cree correcto (opcional). Queda guardado junto al enviado (`dispute_sets`) y se avisa a la otra pareja y en el chat.
+- **Corregir:** la pareja que envió el resultado puede **corregirlo** mientras la otra no lo haya confirmado, también si lo han impugnado. Se reinician las 48 horas y se avisa a la otra pareja. Máximo 5 envíos por partido; después decide la organización.
+- **Retirar:** la pareja que lo envió puede retirarlo; el partido vuelve a estar sin resultado.
+- **Panel:** en un partido impugnado se ven las dos versiones con el ganador que saldría de cada una. Se puede dar por bueno el enviado, **dar por buena la de quien impugnó**, o fijar otro a mano.
+- Una vez confirmado el resultado solo lo corrige la organización.
+
+### Grupos
+
+- Panel → Grupos y fases → cada categoría tiene «**+ Crear grupo nuevo**» (primera letra libre: A, B, C, D…). Funciona con la fase generada o publicada.
+- Las parejas **sin grupo** (altas tardías) se añaden desde esa misma categoría al grupo nuevo; en una fase publicada se crean los partidos contra las parejas del grupo.
+- Un grupo de 2 parejas se permite (juegan 1 partido cada una) con un aviso. Los grupos vacíos se pueden eliminar; con parejas o partidos, no.
+- Por ahora no se mueven parejas ya agrupadas entre grupos de una fase publicada.

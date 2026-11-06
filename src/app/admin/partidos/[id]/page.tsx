@@ -2,13 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { getSeasonRow, loadCats, loadPairs, loadMatches, loadOpenSubmissions, loadOptions, matchWhen, pairMap, pairName } from "@/lib/data";
-import { mergeRules } from "@/lib/engine";
+import { matchWinner, mergeRules } from "@/lib/engine";
 import { Flash, MatchPill, PageHead } from "@/components/ui";
 import { ScoreInputs } from "@/components/ScoreInputs";
 import { SubmitButton } from "@/components/SubmitButton";
 import { fmtDateTime, fmtRange, isoToMadridParts, timeLeft } from "@/lib/dates";
 import { AdminChat, type AdminMessage } from "./AdminChat";
-import { acceptSubmittedAction, notPlayedAction, resetAction, scheduleAction, setResultAction, woAction } from "../actions";
+import { acceptDisputeVersionAction, acceptSubmittedAction, notPlayedAction, resetAction, scheduleAction, setResultAction, woAction } from "../actions";
 
 export default async function PartidoAdmin({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
   const { id } = await params;
@@ -68,13 +68,29 @@ export default async function PartidoAdmin({ params, searchParams }: { params: P
           <p style={{ margin: ".4rem 0" }}>
             Enviado por <b>{pairName(pm.get(sub.submitted_by_pair))}</b>: <b>{(sub.sets as any[]).map((s) => `${s.a}-${s.b}`).join("  ")}</b>{sub.ended_by_time ? " (por tiempo)" : ""}
           </p>
-          {sub.status === "DISPUTED"
-            ? <p style={{ margin: ".4rem 0" }}>Motivo de la impugnación: <i>«{sub.dispute_reason}»</i></p>
-            : <p className="muted" style={{ margin: ".4rem 0" }}>La otra pareja puede confirmarlo o impugnarlo; si no responde, se confirma solo en {timeLeft(sub.deadline_at)}.</p>}
-          <form action={acceptSubmittedAction} style={{ marginTop: ".8rem" }}>
-            <input type="hidden" name="match" value={id} />
-            <SubmitButton className="btn btn-navy btn-sm" confirm="¿Dar por bueno el resultado enviado?">Dar por bueno este resultado</SubmitButton>
-          </form>
+          <p className="subtle" style={{ margin: "0 0 .4rem" }}>Los juegos de {nameA} van primero en cada set.</p>
+          {sub.status === "DISPUTED" ? (
+            <>
+              <p style={{ margin: ".4rem 0" }}>Motivo de la impugnación: <i>«{sub.dispute_reason}»</i></p>
+              {sub.dispute_sets ? (() => {
+                const disputer = sub.submitted_by_pair === m.pairA ? nameB : nameA;
+                const w = matchWinner(sub.dispute_sets, sub.dispute_ended_by_time);
+                return <p style={{ margin: ".4rem 0" }}>Versión de <b>{disputer}</b>: <b>{(sub.dispute_sets as any[]).map((x) => `${x.a}-${x.b}`).join("  ")}</b>{sub.dispute_ended_by_time ? " (por tiempo)" : ""} · ganaría {w ? <b>{w === "A" ? nameA : nameB}</b> : <b>nadie (empate absoluto)</b>}.</p>;
+              })() : <p className="muted" style={{ margin: ".4rem 0" }}>La pareja que impugnó no propuso ningún resultado.</p>}
+            </>
+          ) : <p className="muted" style={{ margin: ".4rem 0" }}>La otra pareja puede confirmarlo o impugnarlo; si no responde, se confirma solo en {timeLeft(sub.deadline_at)}.</p>}
+          <div className="actions" style={{ marginTop: ".8rem" }}>
+            <form action={acceptSubmittedAction}>
+              <input type="hidden" name="match" value={id} />
+              <SubmitButton className="btn btn-navy btn-sm" confirm="¿Dar por bueno el resultado enviado?">Dar por bueno el enviado</SubmitButton>
+            </form>
+            {sub.status === "DISPUTED" && sub.dispute_sets && (
+              <form action={acceptDisputeVersionAction}>
+                <input type="hidden" name="match" value={id} />
+                <SubmitButton className="btn btn-navy btn-sm" confirm="¿Dar por buena la versión de la pareja que impugnó?">Dar por buena la de quien impugnó</SubmitButton>
+              </form>
+            )}
+          </div>
         </div>
       )}
 

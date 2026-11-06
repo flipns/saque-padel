@@ -6,7 +6,7 @@ import { Flash, MatchPill } from "@/components/ui";
 import { ScoreInputs } from "@/components/ScoreInputs";
 import { SubmitButton } from "@/components/SubmitButton";
 import { isoToMadridParts, timeLeft } from "@/lib/dates";
-import { claimHereAction, respondAction, submitResultAction } from "../actions";
+import { claimHereAction, respondAction, submitResultAction, withdrawResultAction } from "../actions";
 import { Chat } from "./Chat";
 import { CHAT_CLOSED, loadChat } from "@/lib/chat";
 import { FILTERS } from "@/lib/matching";
@@ -15,6 +15,14 @@ const FILTER_KEYS: string[] = FILTERS.map((f) => f[0]);
 import { Scheduling } from "./Scheduling";
 import { Suggestions } from "./Suggestions";
 import { loadMatchSuggestions } from "@/lib/matching";
+
+function SetsLine({ mine, their }: { mine: number[]; their: number[] }) {
+  return (
+    <div className="match" style={{ border: 0, padding: 0 }}>
+      <div className="teams"><span className="team">Vosotros</span><span className="sets">{mine.join("  ")}</span><span className="team">Rivales</span><span className="sets">{their.join("  ")}</span></div>
+    </div>
+  );
+}
 
 export default async function Partido({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string; f?: string; n?: string }> }) {
   const { id } = await params;
@@ -77,16 +85,27 @@ export default async function Partido({ params, searchParams }: { params: Promis
       {m.status === "WO" && <p className="hint" style={{ marginTop: "1rem" }}>Este partido se resolvió por WO. Puntos de fase: {side === "A" ? m.pointsOverride?.a : m.pointsOverride?.b}.</p>}
       {m.status === "NOT_PLAYED" && <p className="hint" style={{ marginTop: "1rem" }}>La organización ha marcado este partido como no disputado.</p>}
 
-      {m.status === "DISPUTED" && (
-        <div className="card" style={{ marginTop: "1rem" }}><h2 style={{ fontSize: "1.1rem" }}>Resultado impugnado</h2><p className="muted" style={{ margin: ".4rem 0 0" }}>La organización revisará el caso y fijará el resultado definitivo.</p></div>
-      )}
-
-      {m.status === "RESULT_PENDING_CONFIRMATION" && sub && (
+      {(m.status === "RESULT_PENDING_CONFIRMATION" || m.status === "DISPUTED") && sub && (
         <div className="card" style={{ marginTop: "1rem" }}>
-          {iSubmitted ? (
+          {m.status === "DISPUTED" ? (
+            <>
+              <h2 style={{ fontSize: "1.1rem" }}>Resultado impugnado</h2>
+              <p className="muted" style={{ margin: ".4rem 0 .75rem" }}>La organización revisará las versiones y fijará el resultado definitivo.{iSubmitted ? " Si te has equivocado, puedes corregir el tuyo o retirarlo." : ""}</p>
+              <div className="stack">
+                <div><p className="subtle" style={{ margin: 0 }}>Enviado por {iSubmitted ? "vosotros" : pairName(rival)}</p><SetsLine mine={mySets} their={theirSets} /></div>
+                {sub.dispute_sets && (
+                  <div>
+                    <p className="subtle" style={{ margin: 0 }}>Versión de {iSubmitted ? pairName(rival) : "vosotros"}</p>
+                    <SetsLine mine={(sub.dispute_sets as { a: number; b: number }[]).map((x) => (side === "A" ? x.a : x.b))} their={(sub.dispute_sets as { a: number; b: number }[]).map((x) => (side === "A" ? x.b : x.a))} />
+                  </div>
+                )}
+                {sub.dispute_reason && <p style={{ margin: 0 }}><b>Motivo:</b> {sub.dispute_reason}</p>}
+              </div>
+            </>
+          ) : iSubmitted ? (
             <>
               <h2 style={{ fontSize: "1.1rem" }}>Esperando a vuestros rivales</h2>
-              <p className="muted" style={{ margin: ".4rem 0 0" }}>Tienen {timeLeft(sub.deadline_at)} para confirmar o impugnar. Si no responden, el resultado se da por bueno automáticamente.</p>
+              <p className="muted" style={{ margin: ".4rem 0 0" }}>Tienen {timeLeft(sub.deadline_at)} para confirmar o impugnar. Si no responden, el resultado se da por bueno automáticamente. ¿Te has equivocado? Puedes corregirlo o retirarlo mientras no lo hayan confirmado.</p>
             </>
           ) : (
             <>
@@ -99,14 +118,36 @@ export default async function Partido({ params, searchParams }: { params: Promis
                 </form>
                 <details>
                   <summary className="btn btn-outline" style={{ listStyle: "none" }}>Impugnar</summary>
-                  <form action={respondAction} style={{ marginTop: ".75rem", maxWidth: 420 }}>
+                  <form action={respondAction} style={{ marginTop: ".75rem", maxWidth: 460 }}>
                     <input type="hidden" name="match" value={id} /><input type="hidden" name="submission" value={sub.id} /><input type="hidden" name="decision" value="dispute" />
                     <label htmlFor="reason">¿Qué no es correcto?</label><textarea id="reason" name="reason" required />
+                    <p className="subtle" style={{ margin: ".75rem 0 .25rem" }}><b>Si sabes cuál fue el resultado exacto, escríbelo</b> (opcional): la organización lo revisará junto con el enviado.</p>
+                    <ScoreInputs left="Nosotros" right="Ellos" />
+                    <label className="check"><input type="checkbox" name="time" /> Se acabó el tiempo (90 min) y quedó sin terminar</label>
                     <div style={{ marginTop: ".6rem" }}><SubmitButton className="btn btn-danger btn-sm">Enviar impugnación</SubmitButton></div>
                   </form>
                 </details>
               </div>
             </>
+          )}
+
+          {iSubmitted && (
+            <div className="stack" style={{ marginTop: "1rem" }}>
+              <details>
+                <summary className="btn btn-outline btn-sm" style={{ listStyle: "none", display: "inline-flex" }}>Corregir el resultado</summary>
+                <form action={submitResultAction} style={{ marginTop: ".75rem" }}>
+                  <input type="hidden" name="match" value={id} />
+                  <p className="subtle" style={{ margin: "0 0 .5rem" }}>Escribe el resultado correcto. Vuestros rivales tendrán de nuevo 48 horas para confirmarlo.</p>
+                  <ScoreInputs left="Nosotros" right="Ellos" initial={m.sets.map((x) => (side === "A" ? { a: x.a, b: x.b } : { a: x.b, b: x.a }))} />
+                  <label className="check"><input type="checkbox" name="time" defaultChecked={m.endedByTime} /> Se acabó el tiempo (90 min) y quedó sin terminar</label>
+                  <SubmitButton>Enviar resultado corregido</SubmitButton>
+                </form>
+              </details>
+              <form action={withdrawResultAction}>
+                <input type="hidden" name="match" value={id} />
+                <SubmitButton className="btn btn-danger btn-sm" confirm="El resultado se retira y el partido vuelve a estar sin resultado. ¿Retirarlo?">Retirar el resultado</SubmitButton>
+              </form>
+            </div>
           )}
         </div>
       )}

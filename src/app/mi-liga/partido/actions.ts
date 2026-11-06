@@ -40,10 +40,32 @@ export async function respondAction(form: FormData) {
   const id = str(form, "match");
   const path = `/mi-liga/partido/${id}`;
   await run(path, async () => {
-    const { sb } = await mine(id);
+    const { sb, side } = await mine(id);
     const accept = str(form, "decision") === "accept";
-    must(await sb.rpc("respond_result", { p_submission: str(form, "submission"), p_accept: accept, p_reason: accept ? null : str(form, "reason") }));
-    return accept ? "Resultado confirmado." : "Resultado impugnado. La organización decidirá.";
+    let sets: { a: number; b: number }[] | null = null, ended = false;
+    if (!accept) {
+      // Quien impugna puede proponer el resultado exacto (opcional): la organización lo revisará junto con el enviado.
+      const raw = parseSets(form);
+      if (raw.length > 0) {
+        sets = side === "B" ? raw.map((x) => ({ a: x.b, b: x.a })) : raw;   // se guarda siempre como pareja A – pareja B
+        ended = form.get("time") === "on";
+        const bad = validateScore(sets, ended);
+        if (bad) throw new Error(SCORE_ERRORS[bad] ?? "Marcador no válido");
+      }
+    }
+    must(await sb.rpc("respond_result", { p_submission: str(form, "submission"), p_accept: accept, p_reason: accept ? null : str(form, "reason"), p_sets: sets, p_ended_by_time: ended }));
+    return accept ? "Resultado confirmado." : sets ? "Resultado impugnado con vuestra versión. La organización revisará las dos y decidirá." : "Resultado impugnado. La organización decidirá.";
+  });
+}
+
+/** Retira el resultado que enviaste (mientras la otra pareja no lo haya confirmado). El partido vuelve a estar sin resultado. */
+export async function withdrawResultAction(form: FormData) {
+  const id = str(form, "match");
+  const path = `/mi-liga/partido/${id}`;
+  await run(path, async () => {
+    const { sb } = await mine(id);
+    must(await sb.rpc("withdraw_result", { p_match: id }));
+    return "Resultado retirado. Cuando lo tengáis claro, enviad el correcto.";
   });
 }
 

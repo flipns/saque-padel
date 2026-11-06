@@ -81,6 +81,22 @@ export async function acceptSubmittedAction(form: FormData) {
   });
 }
 
+/** Da por buena la versión del resultado que propuso la pareja que impugnó. */
+export async function acceptDisputeVersionAction(form: FormData) {
+  const id = str(form, "match");
+  const { path, sb, user } = await auth(id);
+  await run(path, async () => {
+    const { season, m } = await load(sb, id);
+    const sub = must(await sb.from("result_submissions").select("*").eq("match_id", id).eq("status", "DISPUTED").order("submitted_at", { ascending: false }).limit(1)) as any[];
+    if (!sub[0] || !sub[0].dispute_sets) throw new Error("La pareja que impugnó no propuso ninguna versión.");
+    const winner = await applyResult(sb, season, id, sub[0].dispute_sets, sub[0].dispute_ended_by_time, str(form, "winner"));
+    await closeSubmissions(sb, id, "ADMIN_RESOLVED", "Versión de la pareja que impugnó validada por la organización");
+    await audit(sb, user.email, "DISPUTE_VERSION_ACCEPTED_BY_ADMIN", "match", id, { sets: sub[0].dispute_sets, winner });
+    await tell(sb, season.id, m, "ADMIN_RESULT", "Resultado validado por la organización", (a, b) => `${a} ${setsText(sub[0].dispute_sets)} ${b}. Se ha dado por buena la versión de la pareja que impugnó. Ya cuenta para la clasificación y el ranking.`);
+    return "Versión de la pareja que impugnó validada.";
+  });
+}
+
 /** WO aprobado: por defecto −1 a la pareja responsable y 0 a la otra; el admin puede cambiar los puntos. */
 export async function woAction(form: FormData) {
   const id = str(form, "match");

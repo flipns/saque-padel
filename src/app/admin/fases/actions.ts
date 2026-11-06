@@ -136,6 +136,8 @@ export async function addToGroupAction(form: FormData) {
     const { season, phase } = await load(sb, n);
     const pairId = str(form, "pair"), groupId = str(form, "to");
     if (!groupId) throw new Error("Elige el grupo.");
+    const already = must(await sb.from("group_pairs").select("group_id").eq("phase_id", phase.id).eq("pair_id", pairId).limit(1)) as any[];
+    if (already.length) throw new Error("Esa pareja ya está en un grupo de esta fase.");
     const group = must(await sb.from("groups").select("id, letter, category_id, group_pairs(pair_id)").eq("id", groupId).single()) as any;
     const pair = must(await sb.from("pairs").select("category_id").eq("id", pairId).single()) as any;
     if (group.category_id !== pair.category_id) throw new Error("El grupo debe ser de la misma categoría.");
@@ -146,5 +148,40 @@ export async function addToGroupAction(form: FormData) {
     }
     await audit(sb, user.email, "GROUP_PAIR_ADDED", "phase", phase.id, { pairId, groupId });
     return `Pareja añadida al grupo ${group.letter}${members.length ? ` con ${members.length} partidos nuevos` : ""}.`;
+  });
+}
+
+/** Crea un grupo nuevo (vacío) en una categoría, con la primera letra libre (A, B, C…). Después se le añaden las parejas sin grupo. */
+export async function createGroupAction(form: FormData) {
+  const n = Number(form.get("phase"));
+  const cat = str(form, "cat");
+  const { path, sb, user } = await auth(n);
+  await run(`${path}#cat-${cat}`, async () => {
+    const { phase } = await load(sb, n);
+    if (phase.kind !== "LEVELING") throw new Error("Los grupos de la Race se crean al cerrar la nivelación.");
+    if (!["GENERATED", "PUBLISHED", "ACTIVE"].includes(phase.status)) throw new Error("Primero hay que generar los grupos de la fase.");
+    const used = new Set((must(await sb.from("groups").select("letter").eq("phase_id", phase.id).eq("category_id", cat)) as any[]).map((g) => g.letter as string));
+    const letter = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i)).find((l) => !used.has(l));
+    if (!letter) throw new Error("Ya hay 26 grupos en esta categoría.");
+    must(await sb.from("groups").insert({ phase_id: phase.id, category_id: cat, letter }));
+    await audit(sb, user.email, "GROUP_CREATED", "phase", phase.id, { category: cat, letter });
+    return `Grupo ${letter} creado. Ahora añade las parejas sin grupo desde esta misma categoría.`;
+  });
+}
+
+/** Elimina un grupo que no tiene ninguna pareja ni partidos. */
+export async function deleteEmptyGroupAction(form: FormData) {
+  const n = Number(form.get("phase"));
+  const group = str(form, "group");
+  const { path, sb, user } = await auth(n);
+  await run(path, async () => {
+    const { phase } = await load(sb, n);
+    const g = must(await sb.from("groups").select("id, letter, category_id, group_pairs(pair_id)").eq("id", group).eq("phase_id", phase.id).single()) as any;
+    if ((g.group_pairs ?? []).length > 0) throw new Error("El grupo tiene parejas: solo se pueden eliminar grupos vacíos.");
+    const played = must(await sb.from("matches").select("id").eq("group_id", group).limit(1)) as any[];
+    if (played.length) throw new Error("El grupo tiene partidos: no se puede eliminar.");
+    must(await sb.from("groups").delete().eq("id", group));
+    await audit(sb, user.email, "GROUP_DELETED", "phase", phase.id, { letter: g.letter });
+    return `Grupo ${g.letter} eliminado.`;
   });
 }
