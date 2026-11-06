@@ -156,12 +156,18 @@ export default async function Partido({ params, searchParams }: { params: Promis
         <>
           {(contacts.data as any[] | null)?.length ? (
             <div className="card" style={{ marginTop: "1rem" }}>
-              <p style={{ margin: 0 }}>Contacto de vuestros rivales:{" "}
+              <p style={{ margin: "0 0 .6rem", fontWeight: 800 }}>Contacto de vuestros rivales</p>
+              <ul className="contacts-list">
                 {(contacts.data as any[]).map((c) => (
-                  <span key={c.phone} style={{ marginRight: "1rem", whiteSpace: "nowrap" }}>{c.player_name}{" "}
-                    <a href={`https://wa.me/${String(c.phone).replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer"><b>WhatsApp</b></a>{" · "}<a href={`tel:${c.phone}`}>llamar</a></span>
+                  <li key={c.phone}>
+                    <span className="cname">{c.player_name}</span>
+                    <span className="cactions">
+                      <a className="btn btn-outline btn-sm" href={`https://wa.me/${String(c.phone).replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer" aria-label={`WhatsApp a ${c.player_name}`}>WhatsApp</a>
+                      <a className="btn btn-outline btn-sm" href={`tel:${c.phone}`} aria-label={`Llamar a ${c.player_name}`}>Llamar</a>
+                    </span>
+                  </li>
                 ))}
-              </p>
+              </ul>
             </div>
           ) : null}
           {suggestions && (
