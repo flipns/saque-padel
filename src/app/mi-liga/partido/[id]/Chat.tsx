@@ -5,7 +5,7 @@ import type { ChatMessage } from "@/lib/chat";
 
 const TZ = "Europe/Madrid";
 const hm = (iso: string) => new Date(iso).toLocaleTimeString("es-ES", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false });
-const dayOf = (iso: string) => new Date(iso).toLocaleDateString("es-ES", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" });
+const dayOf = (iso: string) => { const l = new Date(iso).toLocaleDateString("es-ES", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" }); return l.charAt(0).toUpperCase() + l.slice(1); };
 const signature = (m: ChatMessage[]) => m.map((x) => `${x.id}${x.deleted ? "x" : ""}`).join("|");
 const POLL_MS = 5000;
 

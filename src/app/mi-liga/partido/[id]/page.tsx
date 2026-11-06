@@ -44,7 +44,7 @@ export default async function Partido({ params, searchParams }: { params: Promis
   const maxDays = sp.n === "30" ? 30 : 8;
   const liveOptions = options.filter((o) => o.state === "ACTIVE" && new Date(o.startsAt).getTime() > Date.now());
   const suggestions = canPropose && phase
-    ? await loadMatchSuggestions(sb, season.id, m, pairs, phase, { filter, maxDays, excludeMs: liveOptions.map((o) => Date.parse(o.startsAt)) })
+    ? await loadMatchSuggestions(sb, season.id, m, pairs, phase, { filter, maxDays, excludeMs: liveOptions.map((o) => Date.parse(o.startsAt)), options: liveOptions.map((o) => ({ id: o.id, startsAt: o.startsAt })) })
     : null;
   const meIdentity = identityRows.find((r) => r.is_me);
   const today = isoToMadridParts(new Date().toISOString()).date;
@@ -128,7 +128,7 @@ export default async function Partido({ params, searchParams }: { params: Promis
               rivalName={pairName(rival)} meMissing={Boolean(meIdentity && suggestions.missing.some((x) => x.id === meIdentity.player_id))}
               moreDays={`?f=${filter}&n=30#horarios`} />
           )}
-          <Scheduling m={m} options={options} myPairId={side === "A" ? m.pairA : m.pairB} rivalName={pairName(rival)} minDay={minDay} maxDay={maxDay} bookingRef={(bookRes.data as any)?.booking_ref ?? null} />
+          <Scheduling m={m} options={options} hints={suggestions?.hints} myPairId={side === "A" ? m.pairA : m.pairB} rivalName={pairName(rival)} minDay={minDay} maxDay={maxDay} bookingRef={(bookRes.data as any)?.booking_ref ?? null} />
         </>
       )}
 

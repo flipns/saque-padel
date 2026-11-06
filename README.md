@@ -15,6 +15,7 @@ Stack: Next.js 15 (App Router) + Supabase (Postgres, Auth con magic link, RLS, p
    - `supabase/migrations/0006_phase3_emails.sql` (emails de aviso, recordatorios y preferencias; solo añade y sustituye `respond_result` y `auto_confirm_due`)
    - `supabase/migrations/0007_phase4_chat.sql` (chat por partido; solo añade y sustituye `auto_confirm_due`)
    - `supabase/migrations/0008_phase5_availability.sql` (disponibilidad semanal; solo añade y sustituye `notify_phase_published`)
+   - `supabase/migrations/0009_phase5b_exceptions.sql` (preferencias, excepciones por fecha y avisos de cambios; solo añade y sustituye `save_availability`)
    - `supabase/seed.sql` (antes cambia `cambia-esto@ejemplo.com` por tu email de administrador; si ya lo ejecutaste, no hace falta repetirlo)
    - Si `create extension pg_cron` falla, actívala en *Database → Extensions* y vuelve a ejecutar las dos últimas líneas de la migración.
 2. **Auth** (*Authentication*):
@@ -86,7 +87,7 @@ Según el anexo funcional V2 (4/11/2026) y las decisiones del club:
 - **Fase 2 (hecha):** propuestas de hasta 5 horarios, aceptar/rechazar, «ninguno me cuadra» (cierra los del rival y propone otros), retirar, fecha acordada → pista reservada → programado, cambio de fecha con la anterior vigente, y avisos dentro de la web. Sin representantes: quien propone queda conforme y cualquier jugador de la otra pareja acepta. Máximo 5 horarios activos por partido a la vez (anexo RF-COORD-02).
 - **Fase 3 (hecha):** avisos por email con el Gmail del club (sin dominio propio), recordatorios automáticos y preferencias de cada jugador.
 - **Fase 4 (hecha):** chat de cuatro por partido, también con menores (el menor entra con el email del tutor), moderado por la organización.
-- **Fase 5a (hecha):** calendario semanal de disponibilidad de cada jugador y cruce automático 4/4. **Fase 5b (pendiente):** excepciones por fecha, preferencias, nivel 3/4, copiar semanas y avisos de cambios.
+- **Fase 5a y 5b (hechas):** calendario de disponibilidad de cada jugador (semana tipo con franjas preferentes, y excepciones por fecha) y cruce automático de los cuatro calendarios (4 de 4 y alternativas 3 de 4), con avisos de cambios relevantes.
 - **Fase 6:** incidencias y administración avanzada.
 
 Si un jugador es menor, márcalo en *Panel → Parejas → (pareja) → «Menor de edad»*. Su móvil no se muestra nunca y se tendrá en cuenta en el chat.
@@ -137,3 +138,12 @@ Variables de entorno en Vercel (Settings → Environment Variables) y después *
 - Si falta algún calendario se dice quién; si no hay coincidencias se puede pedir a los demás que lo actualicen (un aviso al día por partido).
 - Panel → Resumen → «Jugadores sin disponibilidad» lleva a una lista de quién ha informado y quién no.
 - La lógica de cruce es una función pura (`src/lib/availability.ts`) con tests, incluido el ejemplo del anexo y el cambio de hora.
+
+### Disponibilidad, segunda parte (Fase 5b)
+
+- **Semana tipo con preferencias:** cada franja puede marcarse ★ preferente (puede ir dentro de una normal: 18:00–22:00 y 19:00–21:00 ★).
+- **Fechas concretas** (`/mi-liga/disponibilidad?vista=fechas`): calendario de 6 semanas para añadir **bloqueos** (vacaciones, lesión, festivos; un día entero o un tramo) o **disponibilidad extra**. Un bloqueo prevalece siempre sobre la semana tipo y sobre la disponibilidad extra. Atajos: bloquear semana, vaciar semana, copiar una semana a otra y bloquear un periodo. La nota de un bloqueo es privada y no sale en ningún aviso.
+- **Tres niveles** en «Mejores horarios»: *Recomendados* y *4 de 4* (los cuatro disponibles los 90 minutos), y *alternativas 3 de 4* (tres disponibles y a una persona no le consta el horario; nunca si esa persona ha marcado que NO puede). Orden: antes los preferidos por más jugadores y los más próximos; los 3/4 siempre después de los 4/4.
+- **Cada horario propuesto lleva una indicación** de cómo encaja con los calendarios (encaja con los 4, falta confirmar a alguien, posible conflicto, o no consta disponibilidad completa). Solo orienta: nunca borra una propuesta ni revoca una aceptación.
+- **Avisos de cambios relevantes:** la primera vez que un jugador rellena su disponibilidad (un aviso por persona), y un posible conflicto cuando alguien bloquea una fecha que es uno de los horarios propuestos o la fecha acordada. No incluyen el motivo.
+- El panel (Resumen → «Jugadores sin disponibilidad») cuenta a quien tiene semana tipo; quien solo ha puesto excepciones figura como «sin informar».

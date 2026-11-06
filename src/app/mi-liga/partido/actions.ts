@@ -134,7 +134,7 @@ export async function proposeSuggestionsAction(form: FormData) {
   const path = `/mi-liga/partido/${id}`;
   const { sb } = await requirePlayer(path);
   await run(path, async () => {
-    const picked = form.getAll("s").map((v) => String(v)).filter(Boolean);
+    const picked = [...new Set(form.getAll("s").map((v) => String(v)).filter(Boolean))];   // un horario puede salir en «Recomendados» y en su día
     if (picked.length === 0) throw new Error("Elige al menos un horario de la lista.");
     if (picked.length > 5) throw new Error("Máximo 5 horarios por propuesta: quita alguno.");
     const times = picked.map((t) => { const d = new Date(t); if (Number.isNaN(d.getTime())) throw new Error("Horario no válido."); return d.toISOString(); });

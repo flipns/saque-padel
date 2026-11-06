@@ -1,4 +1,5 @@
 import type { MatchView, OptionView } from "@/lib/data";
+import type { Hint } from "@/lib/matching";
 import { SubmitButton } from "@/components/SubmitButton";
 import { fmtDateTime, fmtRange } from "@/lib/dates";
 import { bookingAction, changeDateAction, proposeAction, respondOptionAction, withdrawOptionAction } from "../actions";
@@ -22,9 +23,10 @@ function DateRows({ count, min, max }: { count: number; min: string; max: string
 }
 
 /** Coordinación de fecha de un partido: proponer, aceptar, acordar, registrar pista y cambiar fecha. */
-export function Scheduling({ m, options, myPairId, rivalName, minDay, maxDay, bookingRef }: {
-  m: MatchView; options: OptionView[]; myPairId: string; rivalName: string; minDay: string; maxDay: string; bookingRef: string | null;
+export function Scheduling({ m, options, hints, myPairId, rivalName, minDay, maxDay, bookingRef }: {
+  m: MatchView; options: OptionView[]; hints?: Record<string, Hint>; myPairId: string; rivalName: string; minDay: string; maxDay: string; bookingRef: string | null;
 }) {
+  const tag = (id: string) => { const h = hints?.[id]; return h ? <span className={`pill${h.tone === "muted" ? "" : ` pill-${h.tone}`}`}>{h.text}</span> : null; };
   const now = Date.now();
   const live = options.filter((o) => o.state === "ACTIVE" && new Date(o.startsAt).getTime() > now);
   const mineLive = live.filter((o) => o.pairId === myPairId);
@@ -66,7 +68,7 @@ export function Scheduling({ m, options, myPairId, rivalName, minDay, maxDay, bo
           <ul className="optlist">
             {theirsLive.map((o) => (
               <li className="optrow" key={o.id}>
-                <span className="when">{fmtRange(o.startsAt)}</span>
+                <span><span className="when">{fmtRange(o.startsAt)}</span> {tag(o.id)}</span>
                 <span className="actions">
                   <form action={respondOptionAction}>
                     <input type="hidden" name="match" value={m.id} /><input type="hidden" name="option" value={o.id} /><input type="hidden" name="decision" value="accept" />
@@ -98,7 +100,7 @@ export function Scheduling({ m, options, myPairId, rivalName, minDay, maxDay, bo
           <ul className="optlist">
             {mineLive.map((o) => (
               <li className="optrow" key={o.id}>
-                <span className="when">{fmtRange(o.startsAt)}</span>
+                <span><span className="when">{fmtRange(o.startsAt)}</span> {tag(o.id)}</span>
                 <form action={withdrawOptionAction}>
                   <input type="hidden" name="match" value={m.id} /><input type="hidden" name="option" value={o.id} />
                   <SubmitButton className="btn btn-outline btn-sm">Retirar</SubmitButton>
