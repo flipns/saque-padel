@@ -17,6 +17,7 @@ Stack: Next.js 15 (App Router) + Supabase (Postgres, Auth con magic link, RLS, p
    - `supabase/migrations/0008_phase5_availability.sql` (disponibilidad semanal; solo añade y sustituye `notify_phase_published`)
    - `supabase/migrations/0009_phase5b_exceptions.sql` (preferencias, excepciones por fecha y avisos de cambios; solo añade y sustituye `save_availability`)
    - `supabase/migrations/0010_result_corrections.sql` (impugnar con resultado exacto, corregir y retirar resultados; solo añade y sustituye `submit_result`, `respond_result` y `audit_to_chat`). **Ejecútala antes de desplegar el código nuevo.**
+   - `supabase/migrations/0011_move_pairs.sql` (mover parejas entre grupos y cambiar de categoría; solo añade dos funciones). **Ejecútala antes de desplegar el código nuevo.**
    - `supabase/seed.sql` (antes cambia `cambia-esto@ejemplo.com` por tu email de administrador; si ya lo ejecutaste, no hace falta repetirlo)
    - Si `create extension pg_cron` falla, actívala en *Database → Extensions* y vuelve a ejecutar las dos últimas líneas de la migración.
 2. **Auth** (*Authentication*):
@@ -163,3 +164,12 @@ Variables de entorno en Vercel (Settings → Environment Variables) y después *
 - Las parejas **sin grupo** (altas tardías) se añaden desde esa misma categoría al grupo nuevo; en una fase publicada se crean los partidos contra las parejas del grupo.
 - Un grupo de 2 parejas se permite (juegan 1 partido cada una) con un aviso. Los grupos vacíos se pueden eliminar; con parejas o partidos, no.
 - Por ahora no se mueven parejas ya agrupadas entre grupos de una fase publicada.
+
+### Mover una pareja de grupo y cambiarla de categoría
+
+- **Mover de grupo** (Panel → Grupos y fases): junto a cada pareja hay un desplegable «Mover…» y el botón «Mover». Sirve en fases generadas y publicadas, siempre dentro de la misma categoría y fase. En una fase publicada se retiran los partidos sin jugar de la pareja (con sus propuestas de fecha y su chat), cambia de grupo y se crean los partidos contra las parejas del grupo nuevo. Se avisa a la pareja, a los rivales de los partidos cancelados y a los del grupo nuevo.
+- **Cambiar de categoría** (Panel → Parejas → ficha de la pareja → «Cambiar de categoría»): dentro de su división (no se pasa de masculina a femenina). Pide un motivo, que queda en el registro. La pareja sale de sus grupos de las fases abiertas, se retiran sus partidos sin jugar y queda **sin grupo** en la categoría nueva; la ficha avisa de en qué fases y enlaza a «Grupos y fases», donde se coloca desde «Parejas sin grupo». El Ranking General individual no cambia y no hay bonus.
+- **Regla de seguridad:** solo se puede mover o cambiar de categoría a una pareja que **no tenga ningún partido con resultado** (jugado, pendiente de confirmar, impugnado, WO o no disputado). El motivo es que la clasificación de una categoría solo cuenta un partido si las dos parejas están en su tabla; si una pareja con resultados se fuera, sus rivales perderían los puntos que ganaron contra ella.
+- Ambas operaciones se hacen en la base de datos en una sola transacción (`admin_move_pair`, `admin_change_pair_category`): o se hacen enteras o no se hace nada.
+- Cada fase tiene sus propios grupos: mover una pareja en la fase 1 no la mueve en la fase 2.
+- Por ahora solo en fases de nivelación; los grupos jerárquicos de la Race se tratarán cuando se desarrollen.

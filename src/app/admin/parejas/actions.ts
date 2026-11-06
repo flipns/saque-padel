@@ -1,5 +1,7 @@
 "use server";
+import { after } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+import { flushEmails } from "@/lib/email";
 import { audit } from "@/lib/audit";
 import { back, run, must } from "@/lib/flash";
 import { str } from "@/lib/form";
@@ -29,7 +31,7 @@ export async function updatePairAction(form: FormData) {
     const oldCat = cats.find((c) => c.id === pair.category_id);
     const newCat = cats.find((c) => c.id === str(form, "category"));
     if (!newCat) throw new Error("Elige una categoría.");
-    if (oldCat && newCat.division !== oldCat.division) throw new Error("No se puede pasar una pareja entre divisiones masculina y femenina.");
+    if (oldCat && newCat.id !== oldCat.id) throw new Error("Para cambiar la categoría usa «Cambiar de categoría»: retira sus partidos sin jugar, la saca de sus grupos y avisa a los jugadores.");
     const status = str(form, "status");
     if (!["ACTIVE", "WITHDRAWN"].includes(status)) throw new Error("Estado no válido.");
     const emails = parseEmails(str(form, "emails"));
@@ -41,7 +43,7 @@ export async function updatePairAction(form: FormData) {
       must(await sb.from("players").update({ full_name: name, is_minor: form.get(`minor${i + 1}`) === "on" }).eq("id", m.player_id));
       must(await sb.from("player_contacts").upsert({ player_id: m.player_id, phone: phone(str(form, `phone${i + 1}`)) || null }, { onConflict: "player_id" }));
     }
-    must(await sb.from("pairs").update({ category_id: newCat.id, status }).eq("id", id));
+    must(await sb.from("pairs").update({ status }).eq("id", id));
     // Se actualiza solo la diferencia, para no perder qué jugador es cada email ni quién lo añadió.
     const current = (must(await sb.from("pair_access").select("email").eq("pair_id", id)) as any[]).map((r) => r.email as string);
     const toDelete = current.filter((e) => !emails.includes(e)), toAdd = emails.filter((e) => !current.includes(e));
@@ -49,7 +51,6 @@ export async function updatePairAction(form: FormData) {
     if (toAdd.length) must(await sb.from("pair_access").insert(toAdd.map((email) => ({ pair_id: id, email }))));
     await audit(sb, user.email, "PAIR_UPDATED", "pair", id, { category: newCat.label, status, emails });
     const notes: string[] = [];
-    if (oldCat && oldCat.id !== newCat.id) notes.push("La pareja cambió de categoría: revisa sus grupos en Grupos (no se mueve sola).");
     if (status === "WITHDRAWN") notes.push("Los partidos pendientes de esta pareja siguen creados: márcalos como WO o no disputados.");
     return `Pareja guardada. ${notes.join(" ")}`.trim();
   });
@@ -98,4 +99,23 @@ export async function createPairAction(form: FormData) {
     return back("/admin/parejas/nueva", "err", e?.message ?? "No se ha podido crear la pareja");
   }
   return back(`/admin/parejas/${newId}`, "ok", "Pareja creada. Si la fase ya está generada, añádela a un grupo desde Grupos.");
+}
+
+/**
+ * Cambia una pareja de categoría dentro de su división (p. ej. Plata femenina → Oro femenina). Solo si aún no tiene
+ * partidos con resultado. La pareja sale de sus grupos de las fases abiertas, se retiran sus partidos sin jugar y queda
+ * sin grupo en la categoría nueva, a la espera de que la organización la coloque. Todo ocurre de una vez en la base de datos.
+ */
+export async function changeCategoryAction(form: FormData) {
+  const id = str(form, "pair");
+  const path = `/admin/parejas/${id}`;
+  const { sb } = await requireAdmin(path);
+  await run(path, async () => {
+    const category = str(form, "category");
+    if (!category) throw new Error("Elige la nueva categoría.");
+    const r = must(await sb.rpc("admin_change_pair_category", { p_pair: id, p_category: category, p_reason: str(form, "reason") })) as { from: string; to: string; cancelled: number; phases: number[] };
+    after(async () => { try { await flushEmails({ limit: 100 }); } catch (e) { console.error("flushEmails failed", e); } });
+    const where = r.phases.length ? ` Ahora está sin grupo en ${r.phases.length === 1 ? "la fase" : "las fases"} ${r.phases.join(" y ")}: colócala en un grupo desde «Grupos y fases».` : "";
+    return `Pareja cambiada de ${r.from} a ${r.to}.${r.cancelled ? ` Se han cancelado ${r.cancelled} ${r.cancelled === 1 ? "partido sin jugar" : "partidos sin jugar"}.` : ""}${where} Se avisa a los jugadores.`;
+  });
 }

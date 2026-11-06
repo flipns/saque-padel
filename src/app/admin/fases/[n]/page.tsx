@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { getSeasonRow, loadCats, loadPairs, loadPhases, loadGroups, loadHistoryAll, loadMatches, pairMap, pairName, groupsText } from "@/lib/data";
-import { pairKey } from "@/lib/engine";
+import { moveImpact, pairKey } from "@/lib/engine";
 import { CatDot, Flash, MatchPill, PageHead, PhasePill } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { fmtDate } from "@/lib/dates";
@@ -31,6 +31,7 @@ export default async function FasePage({ params, searchParams }: { params: Promi
   const editable = phase.status === "DRAFT" || phase.status === "GENERATED";
   const published = ["PUBLISHED", "ACTIVE", "CLOSED", "LOCKED"].includes(phase.status);
   const title = phase.name.split("·")[1]?.trim() ?? phase.name;
+  const live = ["PUBLISHED", "ACTIVE"].includes(phase.status);
   const canEditGroups = isLeveling && ["GENERATED", "PUBLISHED", "ACTIVE"].includes(phase.status);
 
   return (
@@ -127,6 +128,9 @@ export default async function FasePage({ params, searchParams }: { params: Promi
             {warnings.length > 0 && (<ul className="warn-list" role="status">{warnings.map((w) => <li key={w}>{w}</li>)}</ul>)}
             {cg.length === 0 && <p className="empty">{isLeveling ? "Aún sin grupos." : "Sin grupos."}</p>}
 
+            {live && isLeveling && cg.length > 1 && (
+              <p className="subtle" style={{ margin: ".5rem 0 0" }}>Para mover una pareja a otro grupo usa «Mover» junto a su nombre: se cancelan sus partidos sin jugar y se crean los del grupo nuevo. No se puede mover a una pareja que ya tiene resultados.</p>
+            )}
             <div className="groupgrid" style={{ marginTop: ".75rem" }}>
               {cg.map((g) => {
                 const gm = groupMatches(g.id);
@@ -137,16 +141,21 @@ export default async function FasePage({ params, searchParams }: { params: Promi
                       {g.pairIds.map((pid) => (
                         <li key={pid}>
                           <Link href={`/admin/parejas/${pid}`} style={{ textDecoration: "none" }}>{pairName(pm.get(pid))}</Link>
-                          {editable && cg.length > 1 && (
-                            <form action={moveAction} className="mini-form">
-                              <input type="hidden" name="phase" value={n} /><input type="hidden" name="pair" value={pid} />
-                              <select name="to" aria-label="Mover a otro grupo" defaultValue="">
-                                <option value="" disabled>Mover…</option>
-                                {cg.filter((o) => o.id !== g.id).map((o) => <option key={o.id} value={o.id}>Grupo {o.letter}</option>)}
-                              </select>
-                              <SubmitButton className="btn btn-outline btn-sm" pendingText="…">Ir</SubmitButton>
-                            </form>
-                          )}
+                          {isLeveling && (editable || live) && cg.length > 1 && (() => {
+                            const imp = moveImpact(matches.filter((m) => m.pairA === pid || m.pairB === pid).map((m) => m.status));
+                            if (!imp.allowed) return <small className="subtle" title="Ya tiene partidos con resultado: moverla haría que sus rivales perdieran lo que han ganado.">{imp.committed} con resultado · no se puede mover</small>;
+                            return (
+                              <form action={moveAction} className="mini-form">
+                                <input type="hidden" name="phase" value={n} /><input type="hidden" name="pair" value={pid} />
+                                <select name="to" aria-label="Mover a otro grupo" defaultValue="">
+                                  <option value="" disabled>Mover…</option>
+                                  {cg.filter((o) => o.id !== g.id).map((o) => <option key={o.id} value={o.id}>Grupo {o.letter}</option>)}
+                                </select>
+                                <SubmitButton className="btn btn-outline btn-sm" pendingText="…"
+                                  confirm={live ? `Se cancelarán ${imp.open} ${imp.open === 1 ? "partido sin jugar" : "partidos sin jugar"} de esta pareja (con sus propuestas de fecha y su chat) y se crearán los partidos del grupo nuevo. Se avisa a los jugadores. ¿Mover?` : undefined}>{live ? "Mover" : "Ir"}</SubmitButton>
+                              </form>
+                            );
+                          })()}
                         </li>
                       ))}
                     </ul>

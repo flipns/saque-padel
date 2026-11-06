@@ -62,10 +62,20 @@ export async function moveAction(form: FormData) {
   const n = Number(form.get("phase"));
   const { path, sb, user } = await auth(n);
   await run(path, async () => {
-    const { season, phase } = await load(sb, n);
-    if (!editable(phase.status)) throw new Error("La fase ya está publicada.");
+    const { phase } = await load(sb, n);
     const pairId = str(form, "pair"), to = str(form, "to");
     if (!to) throw new Error("Elige el grupo de destino.");
+
+    // Fase con grupos ya publicados: la operación entera (retirar los partidos sin resultado, cambiar de grupo,
+    // crear los partidos nuevos y avisar) la hace la base de datos de una sola vez, para que no pueda quedar a medias.
+    if (["PUBLISHED", "ACTIVE"].includes(phase.status)) {
+      const r = must(await sb.rpc("admin_move_pair", { p_phase: phase.id, p_pair: pairId, p_to: to })) as { from: string; to: string; cancelled: number; created: number; fromSize: number };
+      after(async () => { try { await flushEmails({ limit: 100 }); } catch (e) { console.error("flushEmails failed", e); } });
+      const small = r.fromSize < 3 ? ` Ojo: el grupo ${r.from} se queda con ${r.fromSize} ${r.fromSize === 1 ? "pareja" : "parejas"}.` : "";
+      return `Pareja movida del grupo ${r.from} al ${r.to}: ${r.cancelled} ${r.cancelled === 1 ? "partido sin jugar cancelado" : "partidos sin jugar cancelados"} y ${r.created} ${r.created === 1 ? "partido nuevo" : "partidos nuevos"}. Se avisa a los jugadores.${small}`;
+    }
+
+    if (!editable(phase.status)) throw new Error("La fase ya no admite cambios de grupo.");
     const target = must(await sb.from("groups").select("id, letter, category_id").eq("id", to).single()) as any;
     const pair = must(await sb.from("pairs").select("category_id").eq("id", pairId).single()) as any;
     if (target.category_id !== pair.category_id) throw new Error("Solo se puede mover a un grupo de la misma categoría.");

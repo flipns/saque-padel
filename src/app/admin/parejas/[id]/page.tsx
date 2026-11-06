@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
-import { getSeasonRow, loadCats, loadPairs, loadMatches, pairMap, pairName, setsText } from "@/lib/data";
+import { getSeasonRow, loadCats, loadPairs, loadMatches, loadPhases, pairMap, pairName, setsText } from "@/lib/data";
+import { moveImpact } from "@/lib/engine";
 import { fmtDate } from "@/lib/dates";
 import { Flash, MatchPill, PageHead } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
-import { updatePairAction } from "../actions";
+import { changeCategoryAction, updatePairAction } from "../actions";
 
 export default async function ParejaPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
   const { id } = await params;
@@ -13,15 +14,19 @@ export default async function ParejaPage({ params, searchParams }: { params: Pro
   const { sb } = await requireAdmin(`/admin/parejas/${id}`);
   const season = await getSeasonRow(sb);
   if (!season) notFound();
-  const [cats, pairs, matches, accessRes] = await Promise.all([
+  const [cats, pairs, matches, accessRes, phases, memberRes] = await Promise.all([
     loadCats(sb, season.id), loadPairs(sb, season.id, { contacts: true, emails: true }), loadMatches(sb, season.id, { pairIds: [id] }),
     sb.from("pair_access").select("email, player_id, added_by, added_at").eq("pair_id", id).order("added_at"),
+    loadPhases(sb, season.id), sb.from("group_pairs").select("phase_id, groups(letter)").eq("pair_id", id),
   ]);
   const pm = pairMap(pairs);
   const pair = pm.get(id);
   if (!pair) notFound();
   const cat = cats.find((c) => c.id === pair.categoryId);
-  const sameDivision = cats.filter((c) => c.division === cat?.division);
+  const otherCats = cats.filter((c) => c.division === cat?.division && c.id !== pair.categoryId);
+  const imp = moveImpact(matches.map((m) => m.status));
+  const letterOf = new Map(((memberRes.data ?? []) as any[]).map((r) => [r.phase_id as string, (Array.isArray(r.groups) ? r.groups[0] : r.groups)?.letter as string]));
+  const openPhases = phases.filter((p) => p.kind === "LEVELING" && ["GENERATED", "PUBLISHED", "ACTIVE"].includes(p.status));
 
   return (
     <>
@@ -42,8 +47,10 @@ export default async function ParejaPage({ params, searchParams }: { params: Pro
               </fieldset>
             ))}
             <div>
-              <label htmlFor="category">Categoría</label>
-              <select id="category" name="category" defaultValue={pair.categoryId}>{sameDivision.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select>
+              <label>Categoría</label>
+              <p style={{ margin: ".25rem 0 0", fontWeight: 800 }}>{cat?.label}</p>
+              <input type="hidden" name="category" value={pair.categoryId} />
+              <p className="help" style={{ marginTop: ".25rem" }}>Para cambiarla usa «Cambiar de categoría» más abajo.</p>
               <label htmlFor="status" style={{ marginTop: ".75rem" }}>Estado</label>
               <select id="status" name="status" defaultValue={pair.status}><option value="ACTIVE">Activa</option><option value="WITHDRAWN">Baja</option></select>
             </div>
@@ -55,6 +62,60 @@ export default async function ParejaPage({ params, searchParams }: { params: Pro
           </div>
           <div style={{ marginTop: "1rem" }}><SubmitButton>Guardar cambios</SubmitButton></div>
         </form>
+      </div>
+
+      {openPhases.length > 0 && (
+        <>
+          <h2 className="section-title">Grupos de esta pareja</h2>
+          <div className="card">
+            <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+              {openPhases.map((p) => {
+                const l = letterOf.get(p.id);
+                return (
+                  <li key={p.id}>
+                    {p.name.split("·")[1]?.trim() ?? p.name}: {l ? <b>Grupo {l}</b> : <><b style={{ color: "var(--danger)" }}>sin grupo</b> · <Link href={`/admin/fases/${p.number}#cat-${pair.categoryId}`}>Colocarla en un grupo</Link></>}
+                    {l && <> · <Link href={`/admin/fases/${p.number}#cat-${pair.categoryId}`}>Ver grupo / mover</Link></>}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </>
+      )}
+
+      <h2 className="section-title">Cambiar de categoría</h2>
+      <div className="card">
+        {!imp.allowed ? (
+          <p className="callout warn" style={{ marginBottom: 0 }}>
+            <b>No se puede cambiar de categoría:</b> la pareja ya tiene {imp.committed} {imp.committed === 1 ? "partido con resultado" : "partidos con resultado"}.
+            Si se fuera de {cat?.label}, sus rivales perderían los puntos que ganaron contra ella. Si de verdad hay que hacerlo, antes hay que decidir cómo tratar esos resultados.
+          </p>
+        ) : otherCats.length === 0 ? <p className="subtle" style={{ margin: 0 }}>No hay otras categorías en su división.</p> : (
+          <form action={changeCategoryAction}>
+            <input type="hidden" name="pair" value={id} />
+            <div className="fields">
+              <div>
+                <label htmlFor="newcat">Nueva categoría</label>
+                <select id="newcat" name="category" defaultValue="" required>
+                  <option value="" disabled>Elige…</option>
+                  {otherCats.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="reason">Motivo (queda en el registro)</label>
+                <input id="reason" name="reason" type="text" required maxLength={200} placeholder="Ej.: nivel superior al de su categoría" />
+              </div>
+            </div>
+            <ul className="help" style={{ margin: ".75rem 0", paddingLeft: "1.1rem" }}>
+              <li>Se retiran sus partidos sin jugar ({imp.open}), con sus propuestas de fecha y su chat, y sale de sus grupos.</li>
+              <li>Queda <b>sin grupo</b> en la categoría nueva: después la colocas en «Grupos y fases».</li>
+              <li>Se avisa a los jugadores y a los rivales de los partidos cancelados.</li>
+              <li>Su Ranking General individual no cambia y no hay bonus (un cambio administrativo nunca puntúa).</li>
+              <li>Solo dentro de su división ({cat?.division === "FEMENINA" ? "femenina" : "masculina"}).</li>
+            </ul>
+            <SubmitButton className="btn btn-navy" confirm={`Se cancelarán ${imp.open} ${imp.open === 1 ? "partido sin jugar" : "partidos sin jugar"} y la pareja saldrá de sus grupos. Se avisa a los jugadores. ¿Cambiar de categoría?`}>Cambiar de categoría</SubmitButton>
+          </form>
+        )}
       </div>
 
       <h2 className="section-title">Accesos</h2>
