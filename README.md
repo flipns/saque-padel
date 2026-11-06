@@ -14,6 +14,7 @@ Stack: Next.js 15 (App Router) + Supabase (Postgres, Auth con magic link, RLS, p
    - `supabase/migrations/0005_phase2_dates.sql` (propuestas de fecha, pista, cambio de fecha y avisos; solo añade y sustituye `submit_result`)
    - `supabase/migrations/0006_phase3_emails.sql` (emails de aviso, recordatorios y preferencias; solo añade y sustituye `respond_result` y `auto_confirm_due`)
    - `supabase/migrations/0007_phase4_chat.sql` (chat por partido; solo añade y sustituye `auto_confirm_due`)
+   - `supabase/migrations/0008_phase5_availability.sql` (disponibilidad semanal; solo añade y sustituye `notify_phase_published`)
    - `supabase/seed.sql` (antes cambia `cambia-esto@ejemplo.com` por tu email de administrador; si ya lo ejecutaste, no hace falta repetirlo)
    - Si `create extension pg_cron` falla, actívala en *Database → Extensions* y vuelve a ejecutar las dos últimas líneas de la migración.
 2. **Auth** (*Authentication*):
@@ -85,7 +86,7 @@ Según el anexo funcional V2 (4/11/2026) y las decisiones del club:
 - **Fase 2 (hecha):** propuestas de hasta 5 horarios, aceptar/rechazar, «ninguno me cuadra» (cierra los del rival y propone otros), retirar, fecha acordada → pista reservada → programado, cambio de fecha con la anterior vigente, y avisos dentro de la web. Sin representantes: quien propone queda conforme y cualquier jugador de la otra pareja acepta. Máximo 5 horarios activos por partido a la vez (anexo RF-COORD-02).
 - **Fase 3 (hecha):** avisos por email con el Gmail del club (sin dominio propio), recordatorios automáticos y preferencias de cada jugador.
 - **Fase 4 (hecha):** chat de cuatro por partido, también con menores (el menor entra con el email del tutor), moderado por la organización.
-- **Fase 5:** calendario de disponibilidad y cruce automático 4/4.
+- **Fase 5a (hecha):** calendario semanal de disponibilidad de cada jugador y cruce automático 4/4. **Fase 5b (pendiente):** excepciones por fecha, preferencias, nivel 3/4, copiar semanas y avisos de cambios.
 - **Fase 6:** incidencias y administración avanzada.
 
 Si un jugador es menor, márcalo en *Panel → Parejas → (pareja) → «Menor de edad»*. Su móvil no se muestra nunca y se tendrá en cuenta en el chat.
@@ -127,3 +128,12 @@ Variables de entorno en Vercel (Settings → Environment Variables) y después *
 - **Moderación** (Panel → Partidos → partido → «Chat del partido»): ver todo, eliminar con motivo (los jugadores ven «Mensaje eliminado por la organización»; el original solo lo conserva la organización), restaurar y escribir como organización. Si hay menores en el partido se muestra un aviso.
 - **Retención:** los chats se borran un mes después del fin del Saque Masters (`seasons.rules.chatRetentionMonths`, por defecto 1). Lo hace la tarea diaria (`/api/cron/emails`), así que necesita `CRON_SECRET`.
 - Marca a los jugadores menores en *Panel → Parejas → (pareja) → «Menor de edad»*.
+
+### Disponibilidad y cruce de horarios (Fase 5a)
+
+- **Mi disponibilidad** (`/mi-liga/disponibilidad`): franjas semanales en las que el jugador PUEDE jugar, en tramos de 30 minutos (hora de Madrid). Lo no marcado es «desconocido», nunca «libre». Cada jugador puede editar también la de su compañero/a (útil si este no tiene cuenta).
+- **Mejores horarios** (en cada partido sin fecha): el servidor cruza los calendarios de los cuatro jugadores y sugiere inicios de 90 minutos completos, dentro de la fase, en el futuro y sin pisar otro partido de las dos parejas. Filtros: entre semana, fin de semana, mañanas y tardes. Desde ahí se proponen horarios con un clic; quedan marcados como «sugeridos» (`origin = AVAILABILITY`).
+- **Privacidad:** los rivales no ven el calendario de nadie del otro lado, solo las coincidencias (se calculan en servidor; `availability_rules` solo la leen el propio jugador, su compañero/a y la organización).
+- Si falta algún calendario se dice quién; si no hay coincidencias se puede pedir a los demás que lo actualicen (un aviso al día por partido).
+- Panel → Resumen → «Jugadores sin disponibilidad» lleva a una lista de quién ha informado y quién no.
+- La lógica de cruce es una función pura (`src/lib/availability.ts`) con tests, incluido el ejemplo del anexo y el cambio de hora.

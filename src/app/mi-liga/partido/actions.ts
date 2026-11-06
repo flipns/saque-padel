@@ -1,5 +1,6 @@
 "use server";
 import { requirePlayer } from "@/lib/auth";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { run, must } from "@/lib/flash";
 import { parseSets, SCORE_ERRORS, str } from "@/lib/form";
 import { madridToIso } from "@/lib/dates";
@@ -124,5 +125,35 @@ export async function claimHereAction(form: FormData) {
   await run(path, async () => {
     must(await sb.rpc("claim_identity", { p_pair: str(form, "pair"), p_player: str(form, "player") }));
     return "Listo, ya puedes escribir en el chat.";
+  });
+}
+
+/** Propone los horarios elegidos entre las sugerencias del cruce de calendarios (los marca como «sugeridos»). */
+export async function proposeSuggestionsAction(form: FormData) {
+  const id = str(form, "match");
+  const path = `/mi-liga/partido/${id}`;
+  const { sb } = await requirePlayer(path);
+  await run(path, async () => {
+    const picked = form.getAll("s").map((v) => String(v)).filter(Boolean);
+    if (picked.length === 0) throw new Error("Elige al menos un horario de la lista.");
+    if (picked.length > 5) throw new Error("Máximo 5 horarios por propuesta: quita alguno.");
+    const times = picked.map((t) => { const d = new Date(t); if (Number.isNaN(d.getTime())) throw new Error("Horario no válido."); return d.toISOString(); });
+    const replace = str(form, "replace") === "1";
+    must(await sb.rpc("propose_dates", { p_match: id, p_times: times, p_replace: replace }));
+    // Se deja constancia de que salen del cruce de calendarios. Un fallo aquí no afecta a la propuesta, que ya está hecha.
+    try { await supabaseAdmin().from("match_date_options").update({ origin: "AVAILABILITY" }).eq("match_id", id).eq("state", "ACTIVE").in("starts_at", times); }
+    catch (e) { console.error("origin update failed", e); }
+    return replace ? "Propuesta enviada. Los horarios anteriores de vuestros rivales se han cerrado." : "Propuesta enviada. Vuestros rivales verán los horarios y podrán aceptar uno.";
+  });
+}
+
+/** Avisa a los otros jugadores de que actualicen su disponibilidad (como mucho una vez al día por partido). */
+export async function requestAvailabilityAction(form: FormData) {
+  const id = str(form, "match");
+  const path = `/mi-liga/partido/${id}`;
+  const { sb } = await requirePlayer(path);
+  await run(path, async () => {
+    const n = must(await sb.rpc("request_availability_update", { p_match: id })) as number | null;
+    return n && n > 0 ? "Aviso enviado: les hemos pedido que actualicen su disponibilidad." : "Ya se les avisó hoy. Podéis hablarlo en el chat.";
   });
 }

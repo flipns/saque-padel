@@ -10,10 +10,14 @@ export default async function AdminHome({ searchParams }: { searchParams: Promis
   const season = await getSeasonRow(sb);
   if (!season) return <p className="card">No hay temporada activa. Ejecuta supabase/seed.sql.</p>;
 
-  const [cats, pairs, phases, matches] = await Promise.all([
+  const [cats, pairs, phases, matches, rulesRes] = await Promise.all([
     loadCats(sb, season.id), loadPairs(sb, season.id), loadPhases(sb, season.id), loadMatches(sb, season.id),
+    sb.from("availability_rules").select("player_id").limit(5000),
   ]);
   const active = pairs.filter((p) => p.status === "ACTIVE");
+  const informed = new Set(((rulesRes.data ?? []) as { player_id: string }[]).map((r) => r.player_id));
+  const activePlayers = active.flatMap((p) => p.players);
+  const noAvailability = activePlayers.filter((pl) => !informed.has(pl.id)).length;
   const current = phases.find((p) => ["DRAFT", "GENERATED", "PUBLISHED", "ACTIVE"].includes(p.status));
   const live = matches.filter((m) => m.phaseId === current?.id);
   const done = live.filter((m) => ["COMPLETED", "WO", "NOT_PLAYED"].includes(m.status)).length;
@@ -49,6 +53,7 @@ export default async function AdminHome({ searchParams }: { searchParams: Promis
         <Link className={`stat${toConfirm ? "" : ""}`} href="/admin/partidos?estado=RESULT_PENDING_CONFIRMATION"><b>{toConfirm}</b><span>Por confirmar (48 h)</span></Link>
         <Link className={`stat${disputed ? " alert" : ""}`} href="/admin/partidos?estado=DISPUTED"><b>{disputed}</b><span>Impugnados</span></Link>
         <Link className="stat" href="/admin/partidos?estado=PENDING_SCHEDULE,SCHEDULE_PROPOSED"><b>{noDate}</b><span>Sin fecha acordada</span></Link>
+        <Link className="stat" href="/admin/disponibilidad"><b>{noAvailability}</b><span>Jugadores sin disponibilidad</span></Link>
         <Link className="stat" href="/admin/partidos?estado=DATE_AGREED"><b>{needsCourt}</b><span>Fecha acordada, falta pista</span></Link>
       </div>
 

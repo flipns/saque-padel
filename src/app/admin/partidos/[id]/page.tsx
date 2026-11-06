@@ -18,10 +18,12 @@ export default async function PartidoAdmin({ params, searchParams }: { params: P
   if (!season) notFound();
   const m = (await loadMatches(sb, season.id, { id }))[0];
   if (!m) notFound();
-  const [cats, pairs, subs, options, chatRes] = await Promise.all([
+  const [cats, pairs, subs, options, chatRes, rulesRes] = await Promise.all([
     loadCats(sb, season.id), loadPairs(sb, season.id), loadOpenSubmissions(sb, [id]), loadOptions(sb, id),
     sb.from("match_messages").select("id, kind, author_name, body, created_at, deleted_at, deleted_by, delete_reason").eq("match_id", id).order("created_at").limit(500),
+    sb.from("availability_rules").select("player_id").limit(5000),
   ]);
+  const informed = new Set(((rulesRes.data ?? []) as { player_id: string }[]).map((r) => r.player_id));
   const pm = pairMap(pairs);
   const a = pm.get(m.pairA), b = pm.get(m.pairB);
   const cat = cats.find((c) => c.id === m.categoryId);
@@ -55,6 +57,11 @@ export default async function PartidoAdmin({ params, searchParams }: { params: P
         </div>
       </div>
 
+      <p className="subtle" style={{ margin: ".75rem 0 0" }}>
+        Disponibilidad informada:{" "}
+        {[a, b].flatMap((p) => p?.players ?? []).map((pl) => <span key={pl.id} style={{ marginRight: ".9rem", whiteSpace: "nowrap" }}>{pl.name} {informed.has(pl.id) ? "✓" : "✗ sin informar"}</span>)}
+      </p>
+
       {sub && (
         <div className="card" style={{ borderColor: sub.status === "DISPUTED" ? "#efc3c7" : "var(--line)", background: sub.status === "DISPUTED" ? "#fff8f8" : undefined }}>
           <h2 style={{ fontSize: "1.1rem" }}>{sub.status === "DISPUTED" ? "Resultado impugnado" : "Resultado enviado, pendiente de confirmar"}</h2>
@@ -75,10 +82,10 @@ export default async function PartidoAdmin({ params, searchParams }: { params: P
         <div className="card">
           <h2 style={{ fontSize: "1.1rem", marginBottom: ".5rem" }}>Propuestas de fecha ({options.length})</h2>
           <div className="table-scroll compact"><table>
-            <thead><tr><th>Horario</th><th>Propone</th><th>Estado</th><th>Decide</th></tr></thead>
+            <thead><tr><th>Horario</th><th>Propone</th><th>Origen</th><th>Estado</th><th>Decide</th></tr></thead>
             <tbody>
               {options.map((o) => (
-                <tr key={o.id}><td>{fmtRange(o.startsAt)}</td><td>{o.pairId === m.pairA ? nameA : nameB}</td>
+                <tr key={o.id}><td>{fmtRange(o.startsAt)}</td><td>{o.pairId === m.pairA ? nameA : nameB}</td><td>{o.origin === "AVAILABILITY" ? "Cruce de calendarios" : "A mano"}</td>
                   <td>{({ ACTIVE: "Activa", ACCEPTED: "Aceptada", REJECTED: "Rechazada", WITHDRAWN: "Retirada", SUPERSEDED: "Descartada", EXPIRED: "Caducada" } as Record<string, string>)[o.state]}</td>
                   <td>{o.decidedBy ? `${o.decidedBy} · ${fmtDateTime(o.decidedAt)}` : "—"}</td></tr>
               ))}

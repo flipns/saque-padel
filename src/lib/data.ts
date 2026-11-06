@@ -163,7 +163,7 @@ export function matchWhen(m: MatchView): string {
   }
 }
 
-export interface OptionView { id: string; pairId: string; email: string | null; startsAt: string; state: string; createdAt: string; decidedAt: string | null; decidedBy: string | null }
+export interface OptionView { id: string; pairId: string; email: string | null; startsAt: string; state: string; createdAt: string; decidedAt: string | null; decidedBy: string | null; origin: string }
 
 /** Horarios propuestos para un partido (solo los ven sus cuatro jugadores y la administración). */
 export async function loadOptions(sb: SB, matchId: string): Promise<OptionView[]> {
@@ -171,7 +171,7 @@ export async function loadOptions(sb: SB, matchId: string): Promise<OptionView[]
   if (error) throw new Error(error.message);
   return ((data ?? []) as any[]).map((o) => ({
     id: o.id, pairId: o.proposed_by_pair, email: o.proposed_by_email, startsAt: o.starts_at, state: o.state,
-    createdAt: o.created_at, decidedAt: o.decided_at, decidedBy: o.decided_by_email,
+    createdAt: o.created_at, decidedAt: o.decided_at, decidedBy: o.decided_by_email, origin: o.origin ?? "MANUAL",
   }));
 }
 

@@ -6,6 +6,7 @@ const ITEMS = [
   { href: "/mi-liga", label: "Inicio", exact: true },
   { href: "/mi-liga/liga", label: "Liga" },
   { href: "/mi-liga/ranking", label: "Ranking" },
+  { href: "/mi-liga/disponibilidad", label: "Disponibilidad" },
   { href: "/mi-liga/avisos", label: "Avisos" },
 ];
 

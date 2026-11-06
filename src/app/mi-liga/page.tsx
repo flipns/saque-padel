@@ -27,7 +27,7 @@ export default async function MiLiga({ searchParams }: { searchParams: Promise<{
   const cat = cats.find((c) => c.id === me.categoryId)!;
   const published = phases.filter((p) => ["PUBLISHED", "ACTIVE", "CLOSED", "LOCKED"].includes(p.status));
   const current = published[published.length - 1];
-  const [catPairs, matches, standing, groups, identity, allPairs, recent, unreadRes, chatUnreadRes] = await Promise.all([
+  const [catPairs, matches, standing, groups, identity, allPairs, recent, unreadRes, chatUnreadRes, rulesRes] = await Promise.all([
     loadPairs(sb, season.id, { categoryId: me.categoryId }), loadMatches(sb, season.id, { pairIds: [pid] }), categoryStandings(sb, season, me.categoryId),
     current ? loadGroups(sb, current.id) : Promise.resolve([]),
     sb.rpc("pair_identity", { p_pair: pid }),
@@ -35,7 +35,10 @@ export default async function MiLiga({ searchParams }: { searchParams: Promise<{
     loadRecentResults(sb, season.id, { limit: 6 }),
     sb.from("notifications").select("id", { count: "exact", head: true }).is("read_at", null),
     sb.rpc("chat_unread_counts"),
+    sb.from("availability_rules").select("player_id").limit(500),
   ]);
+  const meRow = ((identity.data ?? []) as { player_id: string; is_me: boolean }[]).find((r) => r.is_me);
+  const hasAvailability = meRow ? ((rulesRes.data ?? []) as { player_id: string }[]).some((r) => r.player_id === meRow.player_id) : true;
   const chatUnread = new Map(((chatUnreadRes.data ?? []) as { match_id: string; unread: number | string }[]).map((r) => [r.match_id, Number(r.unread)]));
   const unread = unreadRes.count ?? 0;
   const allPairsMap = pairMap(allPairs);
@@ -71,6 +74,14 @@ export default async function MiLiga({ searchParams }: { searchParams: Promise<{
       </section>
 
       <PairSetup pairId={pid} rows={(identity.data ?? []) as any[]} siteUrl={process.env.NEXT_PUBLIC_SITE_URL ?? ""} />
+
+      {meRow && !hasAvailability && matches.length > 0 && (
+        <div className="card" style={{ marginBottom: "1.25rem" }}>
+          <h2 style={{ fontSize: "1.1rem" }}>Rellena tu disponibilidad</h2>
+          <p className="muted" style={{ margin: ".3rem 0 .9rem" }}>Marca cuándo puedes jugar y el sistema te sugerirá horarios en los que coincidís los cuatro de cada partido. Tardas un minuto.</p>
+          <Link className="btn btn-navy" href="/mi-liga/disponibilidad">Mi disponibilidad</Link>
+        </div>
+      )}
 
       {unread > 0 && (
         <div className={s.alert} role="status">

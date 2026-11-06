@@ -9,9 +9,14 @@ import { isoToMadridParts, timeLeft } from "@/lib/dates";
 import { claimHereAction, respondAction, submitResultAction } from "../actions";
 import { Chat } from "./Chat";
 import { CHAT_CLOSED, loadChat } from "@/lib/chat";
-import { Scheduling } from "./Scheduling";
+import { FILTERS } from "@/lib/matching";
 
-export default async function Partido({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string }> }) {
+const FILTER_KEYS: string[] = FILTERS.map((f) => f[0]);
+import { Scheduling } from "./Scheduling";
+import { Suggestions } from "./Suggestions";
+import { loadMatchSuggestions } from "@/lib/matching";
+
+export default async function Partido({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; err?: string; f?: string; n?: string }> }) {
   const { id } = await params;
   const sp = await searchParams;
   const { sb, pairIds } = await requirePlayer(`/mi-liga/partido/${id}`);
@@ -33,6 +38,15 @@ export default async function Partido({ params, searchParams }: { params: Promis
   const identityRows = ((identityRes.data ?? []) as { player_id: string; full_name: string; is_me: boolean }[]);
   const needsIdentity = !identityRows.some((r) => r.is_me);
   const negotiable = !["COMPLETED", "WO", "NOT_PLAYED"].includes(m.status) && m.status !== "DISPUTED" && m.status !== "RESULT_PENDING_CONFIRMATION";
+  // Horarios sugeridos por el cruce de calendarios (solo mientras se puede proponer fecha).
+  const canPropose = ["PENDING_SCHEDULE", "SCHEDULE_PROPOSED", "RESCHEDULE_REQUESTED"].includes(m.status);
+  const filter = FILTER_KEYS.includes(sp.f ?? "") ? (sp.f as string) : "todos";
+  const maxDays = sp.n === "30" ? 30 : 8;
+  const liveOptions = options.filter((o) => o.state === "ACTIVE" && new Date(o.startsAt).getTime() > Date.now());
+  const suggestions = canPropose && phase
+    ? await loadMatchSuggestions(sb, season.id, m, pairs, phase, { filter, maxDays, excludeMs: liveOptions.map((o) => Date.parse(o.startsAt)) })
+    : null;
+  const meIdentity = identityRows.find((r) => r.is_me);
   const today = isoToMadridParts(new Date().toISOString()).date;
   const minDay = phase && phase.starts_on > today ? phase.starts_on : today;
   const maxDay = phase?.results_deadline ?? today;
@@ -109,6 +123,11 @@ export default async function Partido({ params, searchParams }: { params: Promis
               </p>
             </div>
           ) : null}
+          {suggestions && (
+            <Suggestions matchId={id} data={suggestions} filter={filter} theirsLive={liveOptions.some((o) => o.pairId !== myPairId)} free={5 - liveOptions.length}
+              rivalName={pairName(rival)} meMissing={Boolean(meIdentity && suggestions.missing.some((x) => x.id === meIdentity.player_id))}
+              moreDays={`?f=${filter}&n=30#horarios`} />
+          )}
           <Scheduling m={m} options={options} myPairId={side === "A" ? m.pairA : m.pairB} rivalName={pairName(rival)} minDay={minDay} maxDay={maxDay} bookingRef={(bookRes.data as any)?.booking_ref ?? null} />
         </>
       )}
