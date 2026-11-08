@@ -6,6 +6,7 @@ import { MarkRead } from "./MarkRead";
 import { Flash } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { setEmailPrefAction } from "./actions";
+import { EMAIL_SCOPE_TEXT } from "@/lib/emailPolicy";
 
 export default async function Avisos({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   const sp = await searchParams;
@@ -21,7 +22,7 @@ export default async function Avisos({ searchParams }: { searchParams: Promise<{
       <MarkRead unread={unread} />
       <div className="card" style={{ marginBottom: "1rem" }}>
         <form action={setEmailPrefAction} style={{ display: "flex", flexWrap: "wrap", gap: ".75rem 1.25rem", alignItems: "center", justifyContent: "space-between" }}>
-          <span><b>Avisos por email: {emailOn ? "activados" : "desactivados"}</b><br /><span className="subtle">{emailOn ? "Te escribimos cuando haya novedades de tus partidos." : "Los avisos solo aparecerán aquí, en la web."}</span></span>
+          <span><b>Avisos por email: {emailOn ? "activados" : "desactivados"}</b><br /><span className="subtle">{emailOn ? `Te escribimos por email ${EMAIL_SCOPE_TEXT}. El resto de avisos los ves aquí, en la web.` : "Los avisos solo aparecerán aquí, en la web."}</span></span>
           <input type="hidden" name="enabled" value={emailOn ? "0" : "1"} />
           <SubmitButton className="btn btn-outline btn-sm">{emailOn ? "Dejar de recibir emails" : "Volver a recibir emails"}</SubmitButton>
         </form>

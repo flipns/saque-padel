@@ -64,7 +64,8 @@ export default async function Ajustes({ searchParams }: { searchParams: Promise<
           <h2 style={{ fontSize: "1.1rem" }}>Avisos por email</h2>
           <ul style={{ margin: ".6rem 0", paddingLeft: "1.1rem" }}>
             <li>Envío de emails: <b>{mailOn ? `configurado (remitente ${fromAddress()})` : "NO configurado"}</b></li>
-            <li>Tarea diaria de recordatorios: <b>{cronOn ? "configurada" : "no configurada (falta CRON_SECRET)"}</b></li>
+            <li>Se envían por email: <b>fechas propuestas, fechas aceptadas y resultados introducidos</b>. El resto de avisos (confirmaciones, impugnaciones, pista, chat, recordatorios…) solo aparecen en la web.</li>
+            <li>Tarea diaria (confirma resultados a las 48 h, crea recordatorios en la web y limpia chats): <b>{cronOn ? "configurada" : "no configurada (falta CRON_SECRET)"}</b></li>
             <li>Enviados en las últimas 24 h: <b>{sentRes.count ?? 0}</b> · Pendientes: <b>{pendingRes.count ?? 0}</b> · Con error tras 3 intentos: <b>{failedRes.count ?? 0}</b></li>
           </ul>
           {!mailOn && <p className="help">Añade <code>SMTP_USER</code> y <code>SMTP_PASS</code> (contraseña de aplicación del Gmail del club) en las variables de entorno de Vercel y vuelve a desplegar.</p>}

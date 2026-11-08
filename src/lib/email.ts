@@ -2,6 +2,7 @@ import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { mailConfigured, sendMail } from "@/lib/mailer";
 import { renderNotificationEmail } from "@/lib/emailTemplate";
+import { isEmailKind } from "@/lib/emailPolicy";
 
 export interface FlushResult { sent: number; skipped: number; failed: number; configured: boolean }
 type Row = { id: string; email: string; match_id: string | null; kind: string; title: string; body: string | null };
@@ -25,11 +26,20 @@ export async function flushEmails(opts: { limit?: number } = {}): Promise<FlushR
     if (rows.length === 0) break;
     remaining -= rows.length;
 
-    const { data: prefs } = await db.from("notification_prefs").select("email, email_enabled").in("email", [...new Set(rows.map((r) => r.email))]);
+    // Solo se envían por email los tipos de aviso permitidos (ver emailPolicy). Los demás se quedan en la web.
+    // La base de datos ya los marca así al crearlos; esto protege también si el código se despliega antes que la migración.
+    const notEmailed = rows.filter((r) => !isEmailKind(r.kind));
+    if (notEmailed.length > 0) {
+      await db.from("notifications").update({ emailed_at: new Date().toISOString(), email_status: "SKIPPED_POLICY" }).in("id", notEmailed.map((r) => r.id));
+      result.skipped += notEmailed.length;
+    }
+    const queue = rows.filter((r) => isEmailKind(r.kind));
+
+    const { data: prefs } = await db.from("notification_prefs").select("email, email_enabled").in("email", [...new Set(queue.map((r) => r.email))]);
     const off = new Set(((prefs ?? []) as any[]).filter((p) => !p.email_enabled).map((p) => p.email as string));
 
-    for (let i = 0; i < rows.length; i += 5) {
-      await Promise.all(rows.slice(i, i + 5).map(async (r) => {
+    for (let i = 0; i < queue.length; i += 5) {
+      await Promise.all(queue.slice(i, i + 5).map(async (r) => {
         const now = new Date().toISOString();
         if (off.has(r.email)) {
           await db.from("notifications").update({ emailed_at: now, email_status: "SKIPPED_OPTOUT" }).eq("id", r.id);

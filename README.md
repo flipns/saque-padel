@@ -18,6 +18,7 @@ Stack: Next.js 15 (App Router) + Supabase (Postgres, Auth con magic link, RLS, p
    - `supabase/migrations/0009_phase5b_exceptions.sql` (preferencias, excepciones por fecha y avisos de cambios; solo añade y sustituye `save_availability`)
    - `supabase/migrations/0010_result_corrections.sql` (impugnar con resultado exacto, corregir y retirar resultados; solo añade y sustituye `submit_result`, `respond_result` y `audit_to_chat`). **Ejecútala antes de desplegar el código nuevo.**
    - `supabase/migrations/0011_move_pairs.sql` (mover parejas entre grupos y cambiar de categoría; solo añade dos funciones). **Ejecútala antes de desplegar el código nuevo.**
+   - `supabase/migrations/0012_email_policy.sql` (solo se envían por email fechas propuestas, aceptadas y resultados introducidos; solo añade y sustituye `claim_pending_emails`).
    - `supabase/seed.sql` (antes cambia `cambia-esto@ejemplo.com` por tu email de administrador; si ya lo ejecutaste, no hace falta repetirlo)
    - Si `create extension pg_cron` falla, actívala en *Database → Extensions* y vuelve a ejecutar las dos últimas líneas de la migración.
 2. **Auth** (*Authentication*):
@@ -33,6 +34,16 @@ Un subdominio `*.vercel.app` no permite verificar un dominio en Resend, porque n
 
 - **Gmail o Google Workspace del club** como SMTP en Supabase (contraseña de aplicación, `smtp.gmail.com`, puerto 465). Suficiente para la liga.
 - **Dominio propio** (unos 10–15 € al año, se puede comprar en Vercel) y Resend con ese dominio.
+
+### Qué avisos llegan por email
+
+Todos los avisos aparecen siempre en la web (pestaña **Avisos**, con su contador). Por email solo salen tres tipos:
+
+- **Fechas propuestas** (también cuando contraproponen otras).
+- **Fechas aceptadas.**
+- **Resultados introducidos** (también cuando se corrigen).
+
+El resto (resultado confirmado o impugnado, pista reservada, horarios rechazados, chat, recordatorios, cambios de grupo o categoría, resultados fijados por la organización…) solo se ve en la web. La lista está en `src/lib/emailPolicy.ts` y en la función `email_kinds()` de la migración 0012; para cambiarla hay que cambiar las dos (un test comprueba que coinciden). Cada jugador puede además dejar de recibir esos tres emails desde Avisos. Los enlaces de acceso (magic link) los envía Supabase y no dependen de esto.
 
 ## Estructura
 
