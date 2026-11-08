@@ -13,4 +13,4 @@
 .user a, .user button { font: inherit; font-weight: 700; color: var(--white); background: none; border: 1px solid rgba(255,255,255,.35); border-radius: 999px; padding: .3rem .85rem; cursor: pointer; text-decoration: none; }
 .user a:hover, .user button:hover { border-color: var(--white); }
 .main { padding-block: 2rem 4rem; max-width: 1280px; }
-@media (max-width: 760px) { .barInner { flex-wrap: wrap; } .nav { order: 3; flex-basis: 100%; } .brand span { display: none; } }
+@media (max-width: 760px) { .barInner { flex-wrap: wrap; } .nav { order: 3; flex-basis: 100%; flex-wrap: wrap; overflow-x: visible; gap: .2rem; } .nav a { padding: .45rem .75rem; } .brand span { display: none; } }

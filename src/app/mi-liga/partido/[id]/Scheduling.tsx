@@ -11,11 +11,14 @@ const STATE_LABEL: Record<string, string> = {
 function DateRows({ count, min, max }: { count: number; min: string; max: string }) {
   return (
     <div className="daterows" role="group" aria-label="Horarios">
+      <p className="subtle" style={{ margin: 0 }}>Para cada horario elige el día y la hora de inicio. Con uno basta.</p>
       {Array.from({ length: count }, (_, i) => (
         <div className="daterow" key={i}>
-          <span>{i + 1}</span>
-          <input type="date" name={`d${i + 1}`} min={min} max={max} aria-label={`Día del horario ${i + 1}`} />
-          <input type="time" name={`t${i + 1}`} step={900} aria-label={`Hora del horario ${i + 1}`} />
+          <b className="daterow-title">Horario {i + 1}</b>
+          <div className="daterow-fields">
+            <label className="field"><span>Elige fecha</span><input type="date" name={`d${i + 1}`} min={min} max={max} /></label>
+            <label className="field"><span>Elige hora</span><input type="time" name={`t${i + 1}`} step={900} /></label>
+          </div>
         </div>
       ))}
     </div>

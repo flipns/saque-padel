@@ -184,10 +184,21 @@ td.name { min-width: 13rem; }
 .table-scroll.compact table { min-width: 0; }
 
 /* Coordinación de fechas */
-.daterows { display: grid; gap: .5rem; max-width: 460px; margin: .75rem 0; }
-.daterow { display: grid; grid-template-columns: 1.4rem minmax(0, 1fr) minmax(6rem, 7.5rem); gap: .5rem; align-items: center; }
-.daterow input { min-width: 0; width: 100%; }
-.daterow span { font-weight: 800; color: var(--ink-soft); }
+.daterows { display: grid; gap: .6rem; max-width: 460px; margin: .75rem 0; }
+.daterow { border: 1px solid var(--line); border-radius: 12px; padding: .6rem .75rem .75rem; min-width: 0; }
+.daterow-title { display: block; font-size: .85rem; color: var(--ink-soft); margin-bottom: .35rem; }
+.daterow-fields { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: .6rem; }
+.daterow .field { display: block; min-width: 0; margin: 0; }
+.daterow .field span { display: block; font-size: .8rem; font-weight: 800; color: var(--navy); margin-bottom: .25rem; }
+/* Safari de iPhone ignora el ancho de los campos de fecha y hora y los deja sin altura si no se le dice expresamente */
+.daterow input[type="date"], .daterow input[type="time"] {
+  display: block; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; margin: 0;
+  height: 3rem; min-height: 3rem; line-height: 1.2; text-align: left; background-color: var(--white);
+  -webkit-appearance: none; appearance: none;
+}
+.daterow input::-webkit-date-and-time-value { text-align: left; min-height: 1.3em; }
+.daterow input::-webkit-datetime-edit { padding: 0; }
+@media (max-width: 350px) { .daterow-fields { grid-template-columns: minmax(0, 1fr); } }
 .callout { border-radius: var(--radius); padding: .9rem 1.1rem; margin-bottom: 1rem; background: var(--mist); }
 .callout.ok { background: #ddf6ea; color: var(--ok); }
 .callout.warn { background: #fff1d6; color: #5c3a00; }
@@ -282,3 +293,11 @@ a.notif:hover { border-color: var(--navy); }
 .contacts-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem .75rem; }
 .contacts-list .cname { flex: 1 1 11rem; min-width: 0; overflow-wrap: anywhere; font-weight: 700; }
 .contacts-list .cactions { display: flex; gap: .4rem; flex-wrap: wrap; }
+
+/* Panel: disponibilidad informada y propuestas de fecha, sin forzar anchos */
+.avail-line { display: flex; flex-wrap: wrap; gap: .15rem .9rem; margin: .75rem 0 0; font-size: var(--step--1); color: var(--ink-soft); }
+.avail-line b { color: var(--ink); font-weight: 700; }
+.proposals { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.proposals li { border: 1px solid var(--line); border-radius: 12px; padding: .55rem .8rem; }
+.proposals .prop-main { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .6rem; font-weight: 800; }
+.proposals .prop-meta { margin-top: .2rem; font-size: var(--step--1); color: var(--ink-soft); overflow-wrap: anywhere; }

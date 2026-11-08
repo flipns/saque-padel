@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { getSeasonRow, loadCats, loadPairs, loadMatches, loadOpenSubmissions, loadOptions, matchWhen, pairMap, pairName } from "@/lib/data";
 import { matchWinner, mergeRules } from "@/lib/engine";
-import { Flash, MatchPill, PageHead } from "@/components/ui";
+import { Flash, MatchPill, PageHead, Pill } from "@/components/ui";
 import { ScoreInputs } from "@/components/ScoreInputs";
 import { SubmitButton } from "@/components/SubmitButton";
 import { fmtDateTime, fmtRange, isoToMadridParts, timeLeft } from "@/lib/dates";
@@ -57,10 +57,10 @@ export default async function PartidoAdmin({ params, searchParams }: { params: P
         </div>
       </div>
 
-      <p className="subtle" style={{ margin: ".75rem 0 0" }}>
-        Disponibilidad informada:{" "}
-        {[a, b].flatMap((p) => p?.players ?? []).map((pl) => <span key={pl.id} style={{ marginRight: ".9rem", whiteSpace: "nowrap" }}>{pl.name} {informed.has(pl.id) ? "✓" : "✗ sin informar"}</span>)}
-      </p>
+      <div className="avail-line">
+        <span>Disponibilidad informada:</span>
+        {[a, b].flatMap((p) => p?.players ?? []).map((pl) => <span key={pl.id}><b>{pl.name}</b> {informed.has(pl.id) ? "✓" : "✗ sin informar"}</span>)}
+      </div>
 
       {sub && (
         <div className="card" style={{ borderColor: sub.status === "DISPUTED" ? "#efc3c7" : "var(--line)", background: sub.status === "DISPUTED" ? "#fff8f8" : undefined }}>
@@ -97,16 +97,17 @@ export default async function PartidoAdmin({ params, searchParams }: { params: P
       {options.length > 0 && (
         <div className="card">
           <h2 style={{ fontSize: "1.1rem", marginBottom: ".5rem" }}>Propuestas de fecha ({options.length})</h2>
-          <div className="table-scroll compact"><table>
-            <thead><tr><th>Horario</th><th>Propone</th><th>Origen</th><th>Estado</th><th>Decide</th></tr></thead>
-            <tbody>
-              {options.map((o) => (
-                <tr key={o.id}><td>{fmtRange(o.startsAt)}</td><td>{o.pairId === m.pairA ? nameA : nameB}</td><td>{o.origin === "AVAILABILITY" ? "Cruce de calendarios" : "A mano"}</td>
-                  <td>{({ ACTIVE: "Activa", ACCEPTED: "Aceptada", REJECTED: "Rechazada", WITHDRAWN: "Retirada", SUPERSEDED: "Descartada", EXPIRED: "Caducada" } as Record<string, string>)[o.state]}</td>
-                  <td>{o.decidedBy ? `${o.decidedBy} · ${fmtDateTime(o.decidedAt)}` : "—"}</td></tr>
-              ))}
-            </tbody>
-          </table></div>
+          <ul className="proposals">
+            {options.map((o) => {
+              const state = ({ ACTIVE: "Activa", ACCEPTED: "Aceptada", REJECTED: "Rechazada", WITHDRAWN: "Retirada", SUPERSEDED: "Descartada", EXPIRED: "Caducada" } as Record<string, string>)[o.state] ?? o.state;
+              return (
+                <li key={o.id}>
+                  <div className="prop-main"><span>{fmtRange(o.startsAt)}</span><Pill tone={o.state === "ACCEPTED" ? "ok" : o.state === "ACTIVE" ? "info" : undefined}>{state}</Pill></div>
+                  <div className="prop-meta">Propone {o.pairId === m.pairA ? nameA : nameB} · {o.origin === "AVAILABILITY" ? "cruce de calendarios" : "a mano"}{o.decidedBy ? ` · decide ${o.decidedBy} (${fmtDateTime(o.decidedAt)})` : ""}</div>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 
