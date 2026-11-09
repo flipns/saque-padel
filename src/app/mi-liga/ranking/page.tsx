@@ -4,14 +4,14 @@ import { loadBase, loadPairs, loadRanking, type Division } from "@/lib/data";
 
 export default async function RankingJugador({ searchParams }: { searchParams: Promise<{ div?: string; q?: string }> }) {
   const sp = await searchParams;
-  const { sb, pairIds } = await requirePlayer("/mi-liga/ranking");
+  const { sb, pairIds, pairCats } = await requirePlayer("/mi-liga/ranking");
   const base = await loadBase(sb);
   if (!base) return null;
   const { season, cats } = base;
-  const mine = pairIds.length ? await loadPairs(sb, season.id, { ids: pairIds }) : [];
-  const myDivision = cats.find((c) => c.id === mine[0]?.categoryId)?.division ?? "MASCULINA";
+  const myDivision = cats.find((c) => c.id === pairCats[pairIds[0]])?.division ?? "MASCULINA";
   const division: Division = sp.div === "FEMENINA" || sp.div === "MASCULINA" ? sp.div : myDivision;
-  const all = (await loadRanking(sb, season, cats, division)).map((r, i) => ({ ...r, pos: i + 1 }));
+  const [mine, ranking] = await Promise.all([pairIds.length ? loadPairs(sb, season.id, { ids: pairIds }) : Promise.resolve([]), loadRanking(sb, season, cats, division)]);
+  const all = ranking.map((r, i) => ({ ...r, pos: i + 1 }));
   const mineIds = new Set(mine.flatMap((p) => p.players.map((x) => x.id)));
   const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const q = norm(sp.q ?? "");

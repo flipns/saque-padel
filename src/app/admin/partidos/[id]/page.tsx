@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
-import { getSeasonRow, loadCats, loadPairs, loadMatches, loadOpenSubmissions, loadOptions, matchWhen, pairMap, pairName } from "@/lib/data";
+import { loadBase, loadPairs, loadMatches, loadOpenSubmissions, loadOptions, matchWhen, pairMap, pairName } from "@/lib/data";
 import { matchWinner, mergeRules } from "@/lib/engine";
+import { optionsFor } from "@/lib/courts";
 import { Flash, MatchPill, PageHead, Pill } from "@/components/ui";
 import { ScoreInputs } from "@/components/ScoreInputs";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -14,15 +15,17 @@ export default async function PartidoAdmin({ params, searchParams }: { params: P
   const { id } = await params;
   const { ok, err } = await searchParams;
   const { sb } = await requireAdmin(`/admin/partidos/${id}`);
-  const season = await getSeasonRow(sb);
-  if (!season) notFound();
-  const m = (await loadMatches(sb, season.id, { id }))[0];
-  if (!m) notFound();
-  const [cats, pairs, subs, options, chatRes, rulesRes] = await Promise.all([
-    loadCats(sb, season.id), loadPairs(sb, season.id), loadOpenSubmissions(sb, [id]), loadOptions(sb, id),
+  const base = await loadBase(sb);
+  if (!base) notFound();
+  const { season, cats } = base;
+  // Todo lo que depende solo del identificador del partido, a la vez (antes se leía primero el partido).
+  const [matchRows, pairs, subs, options, chatRes, rulesRes] = await Promise.all([
+    loadMatches(sb, season.id, { id }), loadPairs(sb, season.id), loadOpenSubmissions(sb, [id]), loadOptions(sb, id),
     sb.from("match_messages").select("id, kind, author_name, body, created_at, deleted_at, deleted_by, delete_reason").eq("match_id", id).order("created_at").limit(500),
     sb.from("availability_rules").select("player_id").limit(5000),
   ]);
+  const m = matchRows[0];
+  if (!m) notFound();
   const informed = new Set(((rulesRes.data ?? []) as { player_id: string }[]).map((r) => r.player_id));
   const pm = pairMap(pairs);
   const a = pm.get(m.pairA), b = pm.get(m.pairB);
@@ -139,7 +142,13 @@ export default async function PartidoAdmin({ params, searchParams }: { params: P
             <div className="fields">
               <div><label htmlFor="date">Día</label><input id="date" name="date" type="date" defaultValue={when.date} /></div>
               <div><label htmlFor="time">Hora</label><input id="time" name="time" type="time" defaultValue={when.time} /></div>
-              <div><label htmlFor="court">Pista</label><input id="court" name="court" type="text" defaultValue={m.court ?? ""} placeholder="Ej. Pista 3" /></div>
+              <div>
+                <label htmlFor="court">Pista</label>
+                <select id="court" name="court" defaultValue={m.court ?? ""}>
+                  <option value="">Sin pista</option>
+                  {optionsFor(m.court, mergeRules(season.rules).courts).map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
             </div>
             <p className="help">Deja el día vacío para quitar la fecha.</p>
             <SubmitButton className="btn btn-outline btn-sm">Guardar fecha</SubmitButton>

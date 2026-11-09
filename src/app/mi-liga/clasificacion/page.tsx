@@ -1,18 +1,18 @@
 import Link from "next/link";
 import { requirePlayer } from "@/lib/auth";
-import { getSeasonRow, loadCats, loadPairs, categoryStandings, pairName } from "@/lib/data";
+import { loadBase, categoryStandings, pairName } from "@/lib/data";
 import { zoneFor } from "@/lib/engine";
 import { CatDot, Pill } from "@/components/ui";
 
 export default async function Clasificacion({ searchParams }: { searchParams: Promise<{ p?: string; prov?: string }> }) {
   const sp = await searchParams;
-  const { sb, pairIds } = await requirePlayer("/mi-liga/clasificacion");
-  const season = await getSeasonRow(sb);
-  if (!season) return null;
+  const { sb, pairIds, pairCats } = await requirePlayer("/mi-liga/clasificacion");
+  const base = await loadBase(sb);
+  if (!base) return null;
+  const { season, cats } = base;
   if (pairIds.length === 0) return <p className="card empty">Tu email no tiene pareja inscrita.</p>;
   const pid = pairIds.includes(sp.p ?? "") ? (sp.p as string) : pairIds[0];
-  const [cats, mine] = await Promise.all([loadCats(sb, season.id), loadPairs(sb, season.id, { ids: [pid] })]);
-  const cat = cats.find((c) => c.id === mine[0].categoryId)!;
+  const cat = cats.find((c) => c.id === pairCats[pid])!;
   const prov = sp.prov === "1";
   const { rows, quota, pairs } = await categoryStandings(sb, season, cat.id, { provisional: prov });
   const total = rows.length;

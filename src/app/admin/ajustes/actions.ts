@@ -1,4 +1,5 @@
 "use server";
+import { MAX_COURTS } from "@/lib/courts";
 import { requireAdmin } from "@/lib/auth";
 import { flushEmails } from "@/lib/email";
 import { mailConfigured, sendMail, fromAddress } from "@/lib/mailer";
@@ -25,6 +26,19 @@ export async function saveDatesAction(form: FormData) {
     }).eq("id", season.id));
     await audit(sb, user.email, "SEASON_DATES_SAVED", "season", season.id, { deadline, start });
     return "Fechas guardadas.";
+  });
+}
+
+export async function saveCourtsAction(form: FormData) {
+  const { sb, user } = await requireAdmin(PATH);
+  await run(PATH, async () => {
+    const season = await getSeasonRow(sb);
+    if (!season) throw new Error("No hay temporada activa");
+    const n = Math.floor(Number(form.get("courts")));
+    if (!Number.isFinite(n) || n < 1 || n > MAX_COURTS) throw new Error(`El número de pistas debe estar entre 1 y ${MAX_COURTS}.`);
+    must(await sb.from("seasons").update({ rules: { ...(season.rules ?? {}), courts: n } }).eq("id", season.id));
+    await audit(sb, user.email, "COURTS_SET", "season", season.id, { courts: n });
+    return `Guardado: el club tiene ${n} ${n === 1 ? "pista" : "pistas"} (Pista 1${n > 1 ? ` a Pista ${n}` : ""}).`;
   });
 }
 

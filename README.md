@@ -155,7 +155,7 @@ Variables de entorno en Vercel (Settings → Environment Variables) y después *
 ### Disponibilidad, segunda parte (Fase 5b)
 
 - **Semana tipo con preferencias:** cada franja puede marcarse ★ preferente (puede ir dentro de una normal: 18:00–22:00 y 19:00–21:00 ★).
-- **Fechas concretas** (`/mi-liga/disponibilidad?vista=fechas`): calendario de 6 semanas para añadir **bloqueos** (vacaciones, lesión, festivos; un día entero o un tramo) o **disponibilidad extra**. Un bloqueo prevalece siempre sobre la semana tipo y sobre la disponibilidad extra. Atajos: bloquear semana, vaciar semana, copiar una semana a otra y bloquear un periodo. La nota de un bloqueo es privada y no sale en ningún aviso.
+- **Días en los que no puedes** (paso 2 de la misma pantalla): calendario de 6 semanas para añadir **bloqueos** (vacaciones, lesión, festivos; un día entero o un tramo) o **disponibilidad extra**. Un bloqueo prevalece siempre sobre la semana tipo y sobre la disponibilidad extra. Atajos: bloquear semana, vaciar semana, copiar una semana a otra y bloquear un periodo. La nota de un bloqueo es privada y no sale en ningún aviso.
 - **Tres niveles** en «Mejores horarios»: *Recomendados* y *4 de 4* (los cuatro disponibles los 90 minutos), y *alternativas 3 de 4* (tres disponibles y a una persona no le consta el horario; nunca si esa persona ha marcado que NO puede). Orden: antes los preferidos por más jugadores y los más próximos; los 3/4 siempre después de los 4/4.
 - **Cada horario propuesto lleva una indicación** de cómo encaja con los calendarios (encaja con los 4, falta confirmar a alguien, posible conflicto, o no consta disponibilidad completa). Solo orienta: nunca borra una propuesta ni revoca una aceptación.
 - **Avisos de cambios relevantes:** la primera vez que un jugador rellena su disponibilidad (un aviso por persona), y un posible conflicto cuando alguien bloquea una fecha que es uno de los horarios propuestos o la fecha acordada. No incluyen el motivo.
@@ -184,3 +184,19 @@ Variables de entorno en Vercel (Settings → Environment Variables) y después *
 - Ambas operaciones se hacen en la base de datos en una sola transacción (`admin_move_pair`, `admin_change_pair_category`): o se hacen enteras o no se hace nada.
 - Cada fase tiene sus propios grupos: mover una pareja en la fase 1 no la mueve en la fase 2.
 - Por ahora solo en fases de nivelación; los grupos jerárquicos de la Race se tratarán cuando se desarrollen.
+
+### Disponibilidad: una sola pantalla en dos pasos
+
+`/mi-liga/disponibilidad` ya no tiene pestañas ni dos guardados. Paso 1, **semana habitual**: por cada día, tres botones (Mañana 8–14, Tarde 14–19, Noche 19–23); si hay horas concretas dentro de un momento, sale «a medias» y al tocarlo se completa. Paso 2, **días en los que no puedes**: tocar un día lo bloquea y volver a tocarlo lo desbloquea; hay bloqueo de periodos. Un solo botón guarda las dos partes (solo escribe la que ha cambiado). Las horas exactas, los horarios preferentes, bloquear solo unas horas, los días extra y copiar semanas están en desplegables («avanzado»).
+
+### Pistas
+
+Las pistas se eligen de un desplegable («Pista 1» … «Pista N»). El número de pistas (por defecto 10) se cambia en Panel → Ajustes → «Pistas del club» (1 a 30). El servidor valida la elección; una pista antigua escrita a mano se conserva al editar.
+
+### Rendimiento
+
+- La temporada activa se recuerda un minuto por instancia del servidor (solo su identificador) para pedir a la vez temporada, categorías y fases; las consultas que dependen del email se lanzan mientras se verifica la sesión.
+- Las pantallas de inicio, partido, liga, ranking, clasificación y las del panel de partidos piden sus datos de una sola vez (la categoría de cada pareja se conoce desde la sesión).
+- En la ficha del partido, «Mejores horarios» se calcula en paralelo y se envía en diferido (Suspense): la ficha aparece sin esperarlo.
+- Una barra de progreso (`NavProgress`) aparece al pulsar un enlace o un botón que guarda.
+- Medido con 80 ms simulados por consulta: la suma de 13 pantallas pasó de 5,8 a 4,2 segundos. **Pendiente:** los botones que guardan hacen la pantalla nueva dos veces (acción con redirección + petición del navegador); lo más probable en producción es que pese más que esto que la región de Vercel no coincida con la de Supabase (Vercel → Settings → Functions → Region).

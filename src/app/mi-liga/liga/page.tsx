@@ -11,12 +11,11 @@ const PUBLISHED = ["PUBLISHED", "ACTIVE", "CLOSED", "LOCKED"];
 
 export default async function Liga({ searchParams }: { searchParams: Promise<{ cat?: string; vista?: string; fase?: string }> }) {
   const sp = await searchParams;
-  const { sb, pairIds } = await requirePlayer("/mi-liga/liga");
+  const { sb, pairIds, pairCats } = await requirePlayer("/mi-liga/liga");
   const base = await loadBase(sb);
   if (!base) return null;
   const { season, cats, phases } = base;
-  const mineAll = await loadPairs(sb, season.id, { ids: pairIds.length ? pairIds : ["00000000-0000-0000-0000-000000000000"] });
-  const myCat = mineAll[0]?.categoryId;
+  const myCat = pairCats[pairIds[0]];
   const cat = cats.find((c) => c.id === sp.cat) ?? cats.find((c) => c.id === myCat) ?? cats[0];
   const vista = (VIEWS.map((v) => v[0]) as string[]).includes(sp.vista ?? "") ? (sp.vista as string) : "clasificacion";
   const mine = new Set(pairIds);

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
-import { getSeasonRow, loadCats, loadPairs, loadPhases, loadMatches, matchWhen, pairMap, pairName } from "@/lib/data";
+import { loadBase, loadPairs, loadMatches, matchWhen, pairMap, pairName } from "@/lib/data";
 import { CategoryChips, MatchPill, PageHead } from "@/components/ui";
 
 const STATES = [
@@ -12,12 +12,16 @@ const LIMIT = 150;
 export default async function Partidos({ searchParams }: { searchParams: Promise<{ fase?: string; cat?: string; estado?: string }> }) {
   const sp = await searchParams;
   const { sb } = await requireAdmin("/admin/partidos");
-  const season = await getSeasonRow(sb);
-  if (!season) return null;
-  const [cats, phases, pairs] = await Promise.all([loadCats(sb, season.id), loadPhases(sb, season.id), loadPairs(sb, season.id)]);
+  const base = await loadBase(sb);
+  if (!base) return null;
+  const { season, cats, phases } = base;
   const published = phases.filter((p) => ["PUBLISHED", "ACTIVE", "CLOSED", "LOCKED"].includes(p.status));
   const phase = published.find((p) => String(p.number) === sp.fase);
-  const matches = await loadMatches(sb, season.id, { phaseId: phase?.id, categoryId: sp.cat || undefined, statuses: sp.estado ? sp.estado.split(",") : undefined });
+  // Parejas y partidos a la vez (antes uno detrás de otro).
+  const [pairs, matches] = await Promise.all([
+    loadPairs(sb, season.id),
+    loadMatches(sb, season.id, { phaseId: phase?.id, categoryId: sp.cat || undefined, statuses: sp.estado ? sp.estado.split(",") : undefined }),
+  ]);
   const pm = pairMap(pairs);
   const catById = new Map(cats.map((c) => [c.id, c]));
   const href = (o: { fase?: string | null; cat?: string | null; estado?: string | null }) => {

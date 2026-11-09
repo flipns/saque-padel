@@ -2,9 +2,11 @@ import { requireAdmin } from "@/lib/auth";
 import { getSeasonRow } from "@/lib/data";
 import { Flash, PageHead } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
+import { mergeRules } from "@/lib/engine";
+import { MAX_COURTS } from "@/lib/courts";
 import { isoToMadridParts } from "@/lib/dates";
 import { mailConfigured, fromAddress } from "@/lib/mailer";
-import { addAdminAction, flushNowAction, removeAdminAction, saveContactAction, saveDatesAction, savePrizeAction, sendTestEmailAction } from "./actions";
+import { addAdminAction, flushNowAction, removeAdminAction, saveContactAction, saveCourtsAction, saveDatesAction, savePrizeAction, sendTestEmailAction } from "./actions";
 
 export default async function Ajustes({ searchParams }: { searchParams: Promise<{ ok?: string; err?: string }> }) {
   const sp = await searchParams;
@@ -48,6 +50,16 @@ export default async function Ajustes({ searchParams }: { searchParams: Promise<
                 </select></div>
             </div>
             <div style={{ marginTop: "1rem" }}><SubmitButton className="btn btn-navy btn-sm">Guardar premio</SubmitButton></div>
+          </form>
+        </div>
+
+        <div className="card">
+          <h2 style={{ fontSize: "1.1rem" }}>Pistas del club</h2>
+          <form action={saveCourtsAction} style={{ marginTop: ".5rem" }}>
+            <label htmlFor="courts">Número de pistas</label>
+            <input id="courts" name="courts" type="number" min={1} max={MAX_COURTS} defaultValue={mergeRules(season.rules).courts} required style={{ maxWidth: 140 }} />
+            <p className="help">Los jugadores eligen la pista de una lista: Pista 1 hasta la última. Cambiarlo no altera los partidos que ya tienen pista.</p>
+            <SubmitButton className="btn btn-navy btn-sm">Guardar</SubmitButton>
           </form>
         </div>
 

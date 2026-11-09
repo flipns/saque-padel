@@ -4,17 +4,17 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { run, must } from "@/lib/flash";
 import { parseSets, SCORE_ERRORS, str } from "@/lib/form";
 import { madridToIso } from "@/lib/dates";
-import { matchWinner, validateScore } from "@/lib/engine";
-import { getSeasonRow, loadMatches } from "@/lib/data";
+import { matchWinner, mergeRules, validateScore } from "@/lib/engine";
+import { parseCourt } from "@/lib/courts";
+import { loadBase } from "@/lib/data";
 
 async function mine(id: string) {
   const path = `/mi-liga/partido/${id}`;
   const { sb, pairIds } = await requirePlayer(path);
-  const season = await getSeasonRow(sb);
-  if (!season) throw new Error("No hay temporada activa");
-  const m = (await loadMatches(sb, season.id, { id }))[0];
-  if (!m || !(pairIds.includes(m.pairA) || pairIds.includes(m.pairB))) throw new Error("Este partido no es tuyo.");
-  return { path, sb, m, side: (pairIds.includes(m.pairA) ? "A" : "B") as "A" | "B" };
+  // Una sola consulta: solo hace falta saber en qué lado juega esta pareja (las funciones de la base de datos vuelven a comprobar los permisos).
+  const { data: m } = await sb.from("matches").select("pair_a_id, pair_b_id").eq("id", id).maybeSingle();
+  if (!m || !(pairIds.includes(m.pair_a_id) || pairIds.includes(m.pair_b_id))) throw new Error("Este partido no es tuyo.");
+  return { path, sb, side: (pairIds.includes(m.pair_a_id) ? "A" : "B") as "A" | "B" };
 }
 
 /** La pareja ganadora introduce el marcador (visto desde su lado: «nosotros» a la izquierda). */
@@ -123,7 +123,10 @@ export async function bookingAction(form: FormData) {
   const path = `/mi-liga/partido/${id}`;
   const { sb } = await requirePlayer(path);
   await run(path, async () => {
-    must(await sb.rpc("register_booking", { p_match: id, p_court: str(form, "court"), p_ref: str(form, "ref") || null }));
+    const base = await loadBase(sb);
+    const court = parseCourt(str(form, "court"), mergeRules(base?.season.rules).courts);
+    if (!court) throw new Error("Elige una de las pistas de la lista.");
+    must(await sb.rpc("register_booking", { p_match: id, p_court: court, p_ref: str(form, "ref") || null }));
     return "Pista registrada. Se avisa a los cuatro jugadores.";
   });
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requirePlayer } from "@/lib/auth";
-import { getSeasonRow, loadCats, loadPairs, loadMatches, loadOpenSubmissions, loadGroups, loadPhases, loadRecentResults, categoryStandings, matchWhen, pairMap, pairName } from "@/lib/data";
+import { loadBase, loadPairs, loadMatches, loadOpenSubmissionsForPairs, loadGroups, loadRecentResults, categoryStandings, unreadCount, matchWhen, pairMap, pairName } from "@/lib/data";
 import { CatDot, Flash, MatchPill, Pill } from "@/components/ui";
 import { fmtDate, fmtDateTime, timeLeft } from "@/lib/dates";
 import { ResultCard } from "@/components/ResultCard";
@@ -9,7 +9,7 @@ import s from "./liga.module.css";
 
 export default async function MiLiga({ searchParams }: { searchParams: Promise<{ p?: string; ok?: string; err?: string }> }) {
   const sp = await searchParams;
-  const { sb, isAdmin, pairIds } = await requirePlayer();
+  const { sb, isAdmin, pairIds, pairCats } = await requirePlayer();
   if (pairIds.length === 0) {
     return (
       <div className="card empty">
@@ -19,32 +19,34 @@ export default async function MiLiga({ searchParams }: { searchParams: Promise<{
       </div>
     );
   }
-  const season = await getSeasonRow(sb);
-  if (!season) return null;
+  const base = await loadBase(sb);
+  if (!base) return null;
+  const { season, cats, phases } = base;
   const pid = pairIds.includes(sp.p ?? "") ? (sp.p as string) : pairIds[0];
-  const [cats, mine, phases] = await Promise.all([loadCats(sb, season.id), loadPairs(sb, season.id, { ids: pairIds }), loadPhases(sb, season.id)]);
-  const me = mine.find((p) => p.id === pid)!;
-  const cat = cats.find((c) => c.id === me.categoryId)!;
   const published = phases.filter((p) => ["PUBLISHED", "ACTIVE", "CLOSED", "LOCKED"].includes(p.status));
   const current = published[published.length - 1];
-  const [catPairs, matches, standing, groups, identity, allPairs, recent, unreadRes, chatUnreadRes, rulesRes] = await Promise.all([
-    loadPairs(sb, season.id, { categoryId: me.categoryId }), loadMatches(sb, season.id, { pairIds: [pid] }), categoryStandings(sb, season, me.categoryId),
+  // La categoría de cada pareja ya se conoce desde la sesión, así que todo se pide a la vez (antes eran 3 pasos seguidos).
+  const catId = pairCats[pid] ?? (await loadPairs(sb, season.id, { ids: [pid] }))[0]?.categoryId;
+  const [allPairs, matches, standing, groups, identity, recent, unread, chatUnreadRes, rulesRes, subs] = await Promise.all([
+    loadPairs(sb, season.id), loadMatches(sb, season.id, { pairIds: [pid] }), categoryStandings(sb, season, catId),
     current ? loadGroups(sb, current.id) : Promise.resolve([]),
     sb.rpc("pair_identity", { p_pair: pid }),
-    loadPairs(sb, season.id),
     loadRecentResults(sb, season.id, { limit: 6 }),
-    sb.from("notifications").select("id", { count: "exact", head: true }).is("read_at", null),
+    unreadCount(sb),
     sb.rpc("chat_unread_counts"),
     sb.from("availability_rules").select("player_id").limit(500),
+    loadOpenSubmissionsForPairs(sb, [pid]),
   ]);
+  const mine = allPairs.filter((p) => pairIds.includes(p.id));
+  const me = mine.find((p) => p.id === pid)!;
+  const cat = cats.find((c) => c.id === me.categoryId)!;
+  const catPairs = allPairs.filter((p) => p.categoryId === me.categoryId);
   const meRow = ((identity.data ?? []) as { player_id: string; is_me: boolean }[]).find((r) => r.is_me);
   const hasAvailability = meRow ? ((rulesRes.data ?? []) as { player_id: string }[]).some((r) => r.player_id === meRow.player_id) : true;
   const chatUnread = new Map(((chatUnreadRes.data ?? []) as { match_id: string; unread: number | string }[]).map((r) => [r.match_id, Number(r.unread)]));
-  const unread = unreadRes.count ?? 0;
   const allPairsMap = pairMap(allPairs);
   const catById = new Map(cats.map((c) => [c.id, c]));
   const pm = pairMap(catPairs);
-  const subs = await loadOpenSubmissions(sb, matches.map((m) => m.id));
   const myRow = standing.rows.find((r) => r.pairId === pid);
   const toConfirm = matches.filter((m) => m.status === "RESULT_PENDING_CONFIRMATION" && subs.get(m.id) && subs.get(m.id).submitted_by_pair !== pid);
   const byPhase = [...new Set(matches.map((m) => m.phaseNumber))].sort((a, b) => b - a);

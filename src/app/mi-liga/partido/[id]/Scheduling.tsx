@@ -1,7 +1,8 @@
 import type { MatchView, OptionView } from "@/lib/data";
-import type { Hint } from "@/lib/matching";
+import { HintTag, type SuggestionsPromise } from "./Deferred";
 import { SubmitButton } from "@/components/SubmitButton";
 import { fmtDateTime, fmtRange } from "@/lib/dates";
+import { optionsFor } from "@/lib/courts";
 import { bookingAction, changeDateAction, proposeAction, respondOptionAction, withdrawOptionAction } from "../actions";
 
 const STATE_LABEL: Record<string, string> = {
@@ -26,10 +27,10 @@ function DateRows({ count, min, max }: { count: number; min: string; max: string
 }
 
 /** Coordinación de fecha de un partido: proponer, aceptar, acordar, registrar pista y cambiar fecha. */
-export function Scheduling({ m, options, hints, myPairId, rivalName, minDay, maxDay, bookingRef }: {
-  m: MatchView; options: OptionView[]; hints?: Record<string, Hint>; myPairId: string; rivalName: string; minDay: string; maxDay: string; bookingRef: string | null;
+export function Scheduling({ m, options, hintsPromise, myPairId, rivalName, minDay, maxDay, bookingRef, courts }: {
+  m: MatchView; options: OptionView[]; hintsPromise?: SuggestionsPromise | null; myPairId: string; rivalName: string; minDay: string; maxDay: string; bookingRef: string | null; courts: number;
 }) {
-  const tag = (id: string) => { const h = hints?.[id]; return h ? <span className={`pill${h.tone === "muted" ? "" : ` pill-${h.tone}`}`}>{h.text}</span> : null; };
+  const tag = (id: string) => <HintTag promise={hintsPromise} id={id} />;
   const now = Date.now();
   const live = options.filter((o) => o.state === "ACTIVE" && new Date(o.startsAt).getTime() > now);
   const mineLive = live.filter((o) => o.pairId === myPairId);
@@ -131,7 +132,13 @@ export function Scheduling({ m, options, hints, myPairId, rivalName, minDay, max
           <input type="hidden" name="match" value={m.id} />
           <h3 style={{ fontSize: "1rem" }}>¿Ya tenéis la pista?</h3>
           <div className="fields" style={{ maxWidth: 520 }}>
-            <div><label htmlFor="court">Pista</label><input id="court" name="court" type="text" required placeholder="Ej. Pista 3" /></div>
+            <div>
+              <label htmlFor="court">Pista</label>
+              <select id="court" name="court" required defaultValue="">
+                <option value="" disabled>Elige la pista…</option>
+                {optionsFor(null, courts).map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
             <div><label htmlFor="ref">Referencia (opcional)</label><input id="ref" name="ref" type="text" /></div>
           </div>
           <p className="subtle" style={{ margin: ".5rem 0 .75rem" }}>Reservad la pista en el sistema del club para ese día y hora, y apuntadla aquí. Al registrarla, el partido queda programado y se avisa a los cuatro.</p>
@@ -147,7 +154,13 @@ export function Scheduling({ m, options, hints, myPairId, rivalName, minDay, max
               <form action={bookingAction} style={{ marginTop: ".6rem" }}>
                 <input type="hidden" name="match" value={m.id} />
                 <div className="fields" style={{ maxWidth: 520 }}>
-                  <div><label htmlFor="court2">Pista</label><input id="court2" name="court" type="text" required defaultValue={m.court ?? ""} /></div>
+                  <div>
+                    <label htmlFor="court2">Pista</label>
+                    <select id="court2" name="court" required defaultValue={m.court ?? ""}>
+                      {!m.court && <option value="" disabled>Elige la pista…</option>}
+                      {optionsFor(m.court, courts).map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
                   <div><label htmlFor="ref2">Referencia</label><input id="ref2" name="ref" type="text" defaultValue={bookingRef ?? ""} /></div>
                 </div>
                 <div style={{ marginTop: ".6rem" }}><SubmitButton className="btn btn-outline btn-sm">Guardar</SubmitButton></div>

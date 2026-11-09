@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePlayer } from "@/lib/auth";
-import { getSeasonRow, loadBase, loadPairs, loadMatches, loadOpenSubmissions, loadOptions, matchWhen, pairMap, pairName } from "@/lib/data";
+import { loadBase, loadPairs, loadMatches, loadOpenSubmissions, loadOptions, matchWhen, pairMap, pairName } from "@/lib/data";
 import { Flash, MatchPill } from "@/components/ui";
 import { ScoreInputs } from "@/components/ScoreInputs";
 import { SubmitButton } from "@/components/SubmitButton";
 import { isoToMadridParts, timeLeft } from "@/lib/dates";
+import { mergeRules } from "@/lib/engine";
 import { claimHereAction, respondAction, submitResultAction, withdrawResultAction } from "../actions";
 import { Chat } from "./Chat";
 import { CHAT_CLOSED, loadChat } from "@/lib/chat";
@@ -13,7 +14,7 @@ import { FILTERS } from "@/lib/matching";
 
 const FILTER_KEYS: string[] = FILTERS.map((f) => f[0]);
 import { Scheduling } from "./Scheduling";
-import { Suggestions } from "./Suggestions";
+import { SuggestionsDeferred } from "./Deferred";
 import { loadMatchSuggestions } from "@/lib/matching";
 
 function SetsLine({ mine, their }: { mine: number[]; their: number[] }) {
@@ -28,21 +29,28 @@ export default async function Partido({ params, searchParams }: { params: Promis
   const { id } = await params;
   const sp = await searchParams;
   const { sb, pairIds } = await requirePlayer(`/mi-liga/partido/${id}`);
-  const season = await getSeasonRow(sb);
-  if (!season) notFound();
-  const m = (await loadMatches(sb, season.id, { id }))[0];
+  const base = await loadBase(sb);
+  if (!base) notFound();
+  const { season, cats, phases } = base;
+  // Todo lo que depende solo del identificador del partido se pide a la vez (antes eran 4 pasos seguidos).
+  // Si el partido no es tuyo, algunas de estas consultas no devuelven nada y más abajo se responde «no encontrado».
+  const [matchRows, allPairs, subs, contacts, options, bookRes, chatMsgs, identities] = await Promise.all([
+    loadMatches(sb, season.id, { id }),
+    loadPairs(sb, season.id),
+    loadOpenSubmissions(sb, [id]),
+    sb.rpc("rival_contacts", { p_match: id }),
+    loadOptions(sb, id).catch(() => []),
+    sb.from("matches").select("booking_ref").eq("id", id).maybeSingle(),
+    loadChat(sb, id).catch(() => []),
+    Promise.all(pairIds.map((pid) => sb.rpc("pair_identity", { p_pair: pid }))),
+  ]);
+  const m = matchRows[0];
   if (!m || !(pairIds.includes(m.pairA) || pairIds.includes(m.pairB))) notFound();
   const side = pairIds.includes(m.pairA) ? "A" : "B";
-  const base = await loadBase(sb);
-  const cats = base?.cats ?? [];
-  const phase = base?.phases.find((p) => p.id === m.phaseId);
+  const phase = phases.find((p) => p.id === m.phaseId);
   const myPairId = side === "A" ? m.pairA : m.pairB;
-  const [pairs, subs, contacts, options, bookRes, chatMsgs, identityRes] = await Promise.all([
-    loadPairs(sb, season.id, { ids: [m.pairA, m.pairB] }), loadOpenSubmissions(sb, [id]),
-    sb.rpc("rival_contacts", { p_match: id }), loadOptions(sb, id),
-    sb.from("matches").select("booking_ref").eq("id", id).maybeSingle(),
-    loadChat(sb, id), sb.rpc("pair_identity", { p_pair: myPairId }),
-  ]);
+  const pairs = allPairs.filter((p) => p.id === m.pairA || p.id === m.pairB);
+  const identityRes = identities[pairIds.indexOf(myPairId)];
   const identityRows = ((identityRes.data ?? []) as { player_id: string; full_name: string; is_me: boolean }[]);
   const needsIdentity = !identityRows.some((r) => r.is_me);
   const negotiable = !["COMPLETED", "WO", "NOT_PLAYED"].includes(m.status) && m.status !== "DISPUTED" && m.status !== "RESULT_PENDING_CONFIRMATION";
@@ -51,8 +59,10 @@ export default async function Partido({ params, searchParams }: { params: Promis
   const filter = FILTER_KEYS.includes(sp.f ?? "") ? (sp.f as string) : "todos";
   const maxDays = sp.n === "30" ? 30 : 8;
   const liveOptions = options.filter((o) => o.state === "ACTIVE" && new Date(o.startsAt).getTime() > Date.now());
-  const suggestions = canPropose && phase
-    ? await loadMatchSuggestions(sb, season.id, m, pairs, phase, { filter, maxDays, excludeMs: liveOptions.map((o) => Date.parse(o.startsAt)), options: liveOptions.map((o) => ({ id: o.id, startsAt: o.startsAt })) })
+  // Se calcula en paralelo y se envía en diferido: la pantalla no espera a este bloque.
+  const suggestionsP = canPropose && phase
+    ? loadMatchSuggestions(sb, season.id, m, pairs, phase, { filter, maxDays, excludeMs: liveOptions.map((o) => Date.parse(o.startsAt)), options: liveOptions.map((o) => ({ id: o.id, startsAt: o.startsAt })) })
+        .catch((e) => { console.error("suggestions failed", e); return null; })
     : null;
   const meIdentity = identityRows.find((r) => r.is_me);
   const today = isoToMadridParts(new Date().toISOString()).date;
@@ -170,12 +180,11 @@ export default async function Partido({ params, searchParams }: { params: Promis
               </ul>
             </div>
           ) : null}
-          {suggestions && (
-            <Suggestions matchId={id} data={suggestions} filter={filter} theirsLive={liveOptions.some((o) => o.pairId !== myPairId)} free={5 - liveOptions.length}
-              rivalName={pairName(rival)} meMissing={Boolean(meIdentity && suggestions.missing.some((x) => x.id === meIdentity.player_id))}
-              moreDays={`?f=${filter}&n=30#horarios`} />
+          {suggestionsP && (
+            <SuggestionsDeferred promise={suggestionsP} matchId={id} filter={filter} theirsLive={liveOptions.some((o) => o.pairId !== myPairId)} free={5 - liveOptions.length}
+              rivalName={pairName(rival)} meId={meIdentity?.player_id} moreDays={`?f=${filter}&n=30#horarios`} />
           )}
-          <Scheduling m={m} options={options} hints={suggestions?.hints} myPairId={side === "A" ? m.pairA : m.pairB} rivalName={pairName(rival)} minDay={minDay} maxDay={maxDay} bookingRef={(bookRes.data as any)?.booking_ref ?? null} />
+          <Scheduling m={m} options={options} hintsPromise={suggestionsP} myPairId={side === "A" ? m.pairA : m.pairB} rivalName={pairName(rival)} minDay={minDay} maxDay={maxDay} bookingRef={(bookRes.data as any)?.booking_ref ?? null} courts={mergeRules(season.rules).courts} />
         </>
       )}
 

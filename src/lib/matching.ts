@@ -38,10 +38,12 @@ export async function loadMatchSuggestions(
   const now = new Date();
   const today = isoToMadridParts(now.toISOString()).date;
 
+  // Calendarios y otros partidos de las dos parejas, a la vez (antes se pedían uno detrás de otro).
   const db = supabaseAdmin();
-  const [rulesRes, excRes] = await Promise.all([
+  const [rulesRes, excRes, allOthers] = await Promise.all([
     db.from("availability_rules").select("player_id, weekday, start_min, end_min, preferred").in("player_id", ids).limit(2000),
     db.from("availability_exceptions").select("player_id, on_date, start_min, end_min, status, preferred").in("player_id", ids).gte("on_date", today).limit(2000),
+    loadMatches(sb, seasonId, { pairIds: [m.pairA, m.pairB] }),
   ]);
   const cals: PlayerCalendar[] = players.map((p) => ({
     id: p.id, name: p.name,
@@ -52,7 +54,7 @@ export async function loadMatchSuggestions(
   const nameOf = new Map(players.map((p) => [p.id, p.name]));
 
   // Otros partidos de las dos parejas que ocupan una pista (programados o con fecha acordada).
-  const others = (await loadMatches(sb, seasonId, { pairIds: [m.pairA, m.pairB] })).filter((x) => x.id !== m.id && !CLOSED.includes(x.status));
+  const others = allOthers.filter((x) => x.id !== m.id && !CLOSED.includes(x.status));
   const busy = others.flatMap((x) => [x.scheduledAt, x.agreedStartAt].filter(Boolean).map((t) => ({ start: new Date(t!), end: new Date(new Date(t!).getTime() + DURATION * 60000) })));
 
   const all = candidates({

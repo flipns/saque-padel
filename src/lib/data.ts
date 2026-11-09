@@ -59,12 +59,26 @@ export const loadPhases = cache(async (sb: SB, seasonId: string) => {
 });
 
 /** Temporada, categorías y fases: lo que casi toda pantalla necesita. */
+// Identificador de la temporada activa, recordado un minuto en esta instancia del servidor (no es un dato sensible).
+// Permite pedir a la vez la temporada, las categorías y las fases, en lugar de una detrás de otra.
+let activeSeason: { id: string; at: number } | null = null;
+
 export const loadBase = cache(async (sb: SB) => {
-  const season = await getSeasonRow(sb);
+  const hint = activeSeason && Date.now() - activeSeason.at < 60_000 ? activeSeason.id : null;
+  const seasonP = getSeasonRow(sb);
+  if (hint) {
+    const [season, cats, phases] = await Promise.all([seasonP, loadCats(sb, hint), loadPhases(sb, hint)]);
+    if (!season) return null;
+    if (season.id === hint) return { season, cats, phases };
+    // La temporada activa ha cambiado desde la última vez: se piden de nuevo con la correcta.
+  }
+  const season = await seasonP;
   if (!season) return null;
+  activeSeason = { id: season.id, at: Date.now() };
   const [cats, phases] = await Promise.all([loadCats(sb, season.id), loadPhases(sb, season.id)]);
   return { season, cats, phases };
 });
+
 
 // ---------- Parejas ----------
 
@@ -166,6 +180,25 @@ export function matchWhen(m: MatchView): string {
 export interface OptionView { id: string; pairId: string; email: string | null; startsAt: string; state: string; createdAt: string; decidedAt: string | null; decidedBy: string | null; origin: string }
 
 /** Horarios propuestos para un partido (solo los ven sus cuatro jugadores y la administración). */
+/** Resultados pendientes de confirmar o impugnados de los partidos de unas parejas, en una sola consulta (sin conocer antes los partidos). */
+export async function loadOpenSubmissionsForPairs(sb: SB, pairIds: string[]) {
+  const out = new Map<string, any>();
+  if (pairIds.length === 0) return out;
+  const list = pairIds.join(",");
+  const { data } = await sb
+    .from("result_submissions").select("*, matches!inner(pair_a_id, pair_b_id)")
+    .in("status", ["SUBMITTED", "DISPUTED"]).or(`pair_a_id.in.(${list}),pair_b_id.in.(${list})`, { referencedTable: "matches" })
+    .order("submitted_at", { ascending: false });
+  for (const row of (data ?? []) as any[]) if (!out.has(row.match_id)) { const { matches: _m, ...sub } = row; out.set(row.match_id, sub); }
+  return out;
+}
+
+/** Avisos sin leer del usuario. Se calcula una sola vez por petición aunque lo pidan la cabecera y la pantalla. */
+export const unreadCount = cache(async (sb: SB): Promise<number> => {
+  const { count } = await sb.from("notifications").select("id", { count: "exact", head: true }).is("read_at", null);
+  return count ?? 0;
+});
+
 export async function loadOptions(sb: SB, matchId: string): Promise<OptionView[]> {
   const { data, error } = await sb.from("match_date_options").select("*").eq("match_id", matchId).order("created_at").order("starts_at");
   if (error) throw new Error(error.message);

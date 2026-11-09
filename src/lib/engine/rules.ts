@@ -29,6 +29,7 @@ export interface SeasonRules {
   resultConfirmHours: number;
   phaseMarginDays: number;
   mastersMinPhases: number;
+  courts: number; // pistas del club (Pista 1 … Pista N)
 }
 
 export const DEFAULT_RULES: SeasonRules = {
@@ -49,6 +50,7 @@ export const DEFAULT_RULES: SeasonRules = {
   resultConfirmHours: 48,
   phaseMarginDays: 5,
   mastersMinPhases: 3,
+  courts: 10,
 };
 
 export function mergeRules(partial?: Partial<SeasonRules> | null): SeasonRules {

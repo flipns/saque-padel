@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "@fontsource-variable/nunito-sans/wght.css";
 import "./globals.css";
+import { Suspense } from "react";
+import { NavProgress } from "@/components/NavProgress";
 
 export const metadata: Metadata = {
   title: "SAQUE LEAGUE 2026/27 · Saque Pádel Social Club",
@@ -13,7 +15,10 @@ export const viewport: Viewport = { themeColor: "#071e47", width: "device-width"
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        <Suspense fallback={null}><NavProgress /></Suspense>
+        {children}
+      </body>
     </html>
   );
 }
