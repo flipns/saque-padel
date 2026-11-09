@@ -5,11 +5,7 @@ export const CAT_COLOR: Record<string, string> = {
   PREMIER: "var(--navy)", ORO: "var(--gold)", PLATA: "var(--silver)", BRONCE: "var(--bronze)", ROOKIE: "var(--rookie)",
 };
 
-export function Flash({ ok, err }: { ok?: string; err?: string }) {
-  if (err) return <p role="alert" className="flash flash-err">{err}</p>;
-  if (ok) return <p role="status" className="flash flash-ok">{ok}</p>;
-  return null;
-}
+export { Flash } from "./Flash";
 
 type Tone = "ok" | "warn" | "bad" | "info" | "navy" | "muted";
 export function Pill({ tone = "muted", children }: { tone?: Tone; children: React.ReactNode }) {

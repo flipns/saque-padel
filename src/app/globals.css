@@ -329,3 +329,10 @@ button:active, .btn:active, a.chip:active { transform: scale(.98); }
 .avadv > summary { cursor: pointer; font-weight: 800; color: var(--blue); }
 .avrange { margin-top: 1rem; background: var(--mist); border-radius: 12px; padding: .75rem .9rem; }
 .avrange input[type="date"] { width: auto; min-width: 0; max-width: 44%; min-height: 2.75rem; -webkit-appearance: none; appearance: none; background-color: var(--white); }
+
+/* Aviso flotante tras guardar: visible estés donde estés en la pantalla */
+.toast { position: fixed; z-index: 9998; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + .75rem); width: min(560px, calc(100% - 1.25rem)); display: flex; gap: .4rem; align-items: stretch; filter: drop-shadow(0 6px 18px rgba(7, 30, 71, .28)); animation: toast-in .18s ease-out; }
+.toast .flash { flex: 1; margin: 0; }
+.toast-x { border: 0; border-radius: 10px; width: 2.4rem; font-size: 1.3rem; font-weight: 900; cursor: pointer; background: var(--white); color: var(--navy); }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }

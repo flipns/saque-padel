@@ -49,9 +49,11 @@ export function NavProgress() {
       start();
     };
     const onSubmit = (e: SubmitEvent) => { if (!e.defaultPrevented) start(); };
+    const onFlash = () => { if (Date.now() - startedAt.current > 50) finish(); };
+    window.addEventListener("flash:shown", onFlash);
     document.addEventListener("click", onClick, true);
     document.addEventListener("submit", onSubmit, true);
-    return () => { document.removeEventListener("click", onClick, true); document.removeEventListener("submit", onSubmit, true); clear(); };
+    return () => { window.removeEventListener("flash:shown", onFlash); document.removeEventListener("click", onClick, true); document.removeEventListener("submit", onSubmit, true); clear(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

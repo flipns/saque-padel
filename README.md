@@ -199,4 +199,11 @@ Las pistas se eligen de un desplegable («Pista 1» … «Pista N»). El número
 - Las pantallas de inicio, partido, liga, ranking, clasificación y las del panel de partidos piden sus datos de una sola vez (la categoría de cada pareja se conoce desde la sesión).
 - En la ficha del partido, «Mejores horarios» se calcula en paralelo y se envía en diferido (Suspense): la ficha aparece sin esperarlo.
 - Una barra de progreso (`NavProgress`) aparece al pulsar un enlace o un botón que guarda.
-- Medido con 80 ms simulados por consulta: la suma de 13 pantallas pasó de 5,8 a 4,2 segundos. **Pendiente:** los botones que guardan hacen la pantalla nueva dos veces (acción con redirección + petición del navegador); lo más probable en producción es que pese más que esto que la región de Vercel no coincida con la de Supabase (Vercel → Settings → Functions → Region).
+- Medido con 80 ms simulados por consulta: la suma de 13 pantallas pasó de 5,8 a 4,2 segundos. Lo más probable en producción es que pese más que esto que la región de Vercel no coincida con la de Supabase (Vercel → Settings → Functions → Region).
+
+### Botones que guardan (acciones de servidor)
+
+- Antes, cada acción guardaba y **redirigía** a la misma pantalla con `?ok=`: Next calculaba la pantalla nueva dentro de la acción y el navegador la volvía a pedir, así que el trabajo se hacía dos veces seguidas (proponer horarios: 1,4 s y 48 consultas → 0,9 s y 28 con 80 ms simulados por consulta).
+- Ahora `run()` (`src/lib/flash.ts`) **no redirige si el botón se pulsó en la misma pantalla** a la que se vuelve (comprobado con la cabecera `Referer`): guarda, deja el mensaje en la cookie `flash` (30 s) y llama a `revalidatePath`; Next devuelve la pantalla actualizada en la propia respuesta, una sola vez, sin recargar la página y conservando el scroll y los filtros. Si el destino es otra pantalla (p. ej. crear una pareja) o falta la cabecera, redirige con `?ok=` / `?err=` como antes.
+- El mensaje es un **aviso flotante** (`Flash` → `FlashToast`) visible estés donde estés: los éxitos se cierran solos a los 7 s, los errores a los 15 s, y hay una ×. Borra la cookie y quita `?ok=`/`?err=` de la dirección para que no reaparezca al recargar. Cualquier pantalla con un botón que guarde debe incluir `<Flash ok={…} err={…} />`.
+- `React.cache` no evita consultas repetidas **dentro de las acciones** (solo al pintar pantallas), así que las consultas compartidas (temporada, categorías, fases, parejas del usuario, ¿admin?) se guardan en una memoria atada a la conexión de cada petición (`src/lib/memo.ts`).

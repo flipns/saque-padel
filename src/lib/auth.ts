@@ -5,13 +5,14 @@ import type { User } from "@supabase/supabase-js";
 import { supabaseServer } from "./supabase/server";
 import { loadBase } from "./data";
 import { claimsFromToken } from "./jwt";
+import { memoFor } from "./memo";
 
 export const hasPassword = (u: User | null | undefined) => Boolean(u?.app_metadata?.has_password);
 
-const isAdminFor = cache(async (sb: Awaited<ReturnType<typeof supabaseServer>>) => Boolean((await sb.rpc("is_admin")).data));
+const isAdminFor = (sb: Awaited<ReturnType<typeof supabaseServer>>) => memoFor(sb, "is_admin", async () => Boolean((await sb.rpc("is_admin")).data));
 
 /** Parejas a las que da acceso un email, con la categoría de cada una (una sola consulta). */
-const accessFor = cache(async (sb: Awaited<ReturnType<typeof supabaseServer>>, email: string) => {
+const accessFor = (sb: Awaited<ReturnType<typeof supabaseServer>>, email: string) => memoFor(sb, `access:${email}`, async () => {
   const { data } = await sb.from("pair_access").select("pair_id, pairs(category_id)").eq("email", email);
   const rows = (data ?? []) as any[];
   const pairCats: Record<string, string> = {};

@@ -1,3 +1,4 @@
+import { memoFor } from "./memo";
 import { cache } from "react";
 import { fmtDateTime } from "@/lib/dates";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -19,7 +20,7 @@ export interface SeasonRow {
   entry_fee_per_player: number; registration_form_url: string | null;
 }
 
-export const getSeasonRow = cache(async (sb: SB): Promise<SeasonRow | null> => {
+export const getSeasonRow = (sb: SB): Promise<SeasonRow | null> => memoFor(sb, "season", async () => {
   const { data } = await sb.from("seasons").select("*").eq("is_current", true).maybeSingle();
   return (data as SeasonRow) ?? null;
 });
@@ -32,7 +33,7 @@ export interface Cat {
 
 export const divLabel = (d: Division) => (d === "FEMENINA" ? "femenina" : "masculina");
 
-export const loadCats = cache(async (sb: SB, seasonId: string): Promise<Cat[]> => {
+export const loadCats = (sb: SB, seasonId: string): Promise<Cat[]> => memoFor(sb, `cats:${seasonId}`, async () => {
   const { data } = await sb
     .from("categories")
     .select("id, code, name, level_order, active, divisions!inner(id, code, season_id)")
@@ -50,7 +51,7 @@ export const loadCats = cache(async (sb: SB, seasonId: string): Promise<Cat[]> =
     .sort((a, b) => (a.division === b.division ? a.level - b.level : a.division === "MASCULINA" ? -1 : 1));
 });
 
-export const loadPhases = cache(async (sb: SB, seasonId: string) => {
+export const loadPhases = (sb: SB, seasonId: string) => memoFor(sb, `phases:${seasonId}`, async () => {
   const { data } = await sb.from("phases").select("*").eq("season_id", seasonId).order("number");
   return (data ?? []) as {
     id: string; number: number; kind: "LEVELING" | "RACE"; name: string; starts_on: string; ends_on: string;
@@ -63,7 +64,7 @@ export const loadPhases = cache(async (sb: SB, seasonId: string) => {
 // Permite pedir a la vez la temporada, las categorías y las fases, en lugar de una detrás de otra.
 let activeSeason: { id: string; at: number } | null = null;
 
-export const loadBase = cache(async (sb: SB) => {
+export const loadBase = (sb: SB) => memoFor(sb, "base", async () => {
   const hint = activeSeason && Date.now() - activeSeason.at < 60_000 ? activeSeason.id : null;
   const seasonP = getSeasonRow(sb);
   if (hint) {
