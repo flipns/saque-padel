@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { WEEKDAYS, addDays, fmtMin, isoWeekday, normalizeExceptions, normalizeSlots, validateExceptions, validateSlots, type Exception, type Slot } from "@/lib/availability";
 import { saveAvailabilityAction, saveExceptionsAction } from "./actions";
 
@@ -24,8 +24,11 @@ export function AvailabilityEditor({ playerId, playerName, initialSlots, initial
   const [dirtyW, setDirtyW] = useState(false), [dirtyE, setDirtyE] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
-  const [advE, setAdvE] = useState(false);
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSel] = useState<string | null>(null);              // día abierto en la ventana
+  const [draft, setDraft] = useState<Exception[]>([]);              // cambios de ese día, hasta que se guarden
+  const [sheetErr, setSheetErr] = useState<string | null>(null);
+  const [wk, setWk] = useState(0);                                   // semana elegida en «Más opciones»
+  const dlg = useRef<HTMLDialogElement>(null);
   const [from, setFrom] = useState(""), [to, setTo] = useState("");
   const dirty = dirtyW || dirtyE;
 
@@ -59,7 +62,6 @@ export function AvailabilityEditor({ playerId, playerName, initialSlots, initial
   // ---------- Paso 2: días en los que no puede ----------
   const weekStart = addDays(today, -(isoWeekday(today) - 1));
   const weeks = useMemo(() => Array.from({ length: WEEKS }, (_, w) => Array.from({ length: 7 }, (_, d) => addDays(weekStart, w * 7 + d))), [weekStart]);
-  const ofDate = (d: string) => items.map((e, i) => ({ e, i })).filter((x) => x.e.date === d);
   const stateOf = (d: string) => {
     const l = items.filter((e) => e.date === d);
     if (l.some((e) => e.status === "UNAVAILABLE" && whole(e))) return "blocked";
@@ -68,19 +70,38 @@ export function AvailabilityEditor({ playerId, playerName, initialSlots, initial
     return "";
   };
   const blockedCount = items.filter((e) => e.status === "UNAVAILABLE" && whole(e)).length;
-  const toggleDay = (d: string) => {
-    if (advE) { setSel(sel === d ? null : d); return; }       // con las opciones avanzadas abiertas, tocar un día lo abre para editarlo
-    const has = items.some((e) => e.date === d && e.status === "UNAVAILABLE" && whole(e));
-    changeItems(has ? items.filter((e) => !(e.date === d && e.status === "UNAVAILABLE" && whole(e))) : [...items, { date: d, startMin: 0, endMin: 1440, status: "UNAVAILABLE" }]);
-  };
-  const addEx = (date: string, status: Exception["status"], startMin: number, endMin: number) => changeItems([...items, { date, startMin, endMin, status, preferred: false }]);
-  const patchEx = (i: number, p: Partial<Exception>) => changeItems(items.map((e, k) => {
+
+  // ----- Ventana de un día: se edita un borrador y se guarda ese día aparte -----
+  function openDay(d: string) { setDraft(items.filter((e) => e.date === d).map((e) => ({ ...e }))); setSheetErr(null); setSel(d); }
+  useEffect(() => {
+    const el = dlg.current;
+    if (!el) return;
+    if (sel && !el.open) el.showModal();
+    else if (!sel && el.open) el.close();
+  }, [sel]);
+  const addDraft = (status: Exception["status"], startMin: number, endMin: number) => setDraft((d) => [...d, { date: sel!, startMin, endMin, status, preferred: false }]);
+  const patchDraft = (i: number, p: Partial<Exception>) => setDraft((d) => d.map((e, k) => {
     if (k !== i) return e;
     const n = { ...e, ...p };
     if (n.endMin <= n.startMin) n.endMin = Math.min(n.startMin + 60, 1440);
     if (n.status === "UNAVAILABLE") n.preferred = false;
     return n;
   }));
+  const hasWholeDay = draft.some((e) => e.status === "UNAVAILABLE" && whole(e));
+  function saveDay() {
+    if (!sel) return;
+    const next = [...items.filter((e) => e.date !== sel), ...draft];
+    const bad = validateExceptions(next, today);
+    if (bad) { setSheetErr(bad); return; }
+    setSheetErr(null);
+    const label = longDate(sel);
+    start(async () => {
+      const r = await saveExceptionsAction(playerId, next);
+      if (!r.ok) { setSheetErr(r.error ?? "No se ha podido guardar este día."); return; }
+      setItems(r.items ?? normalizeExceptions(next)); setDirtyE(false); setSel(null);
+      setMsg({ ok: true, text: `Guardado: ${label}.` });
+    });
+  }
   const clearWeek = (w: number) => changeItems(items.filter((e) => !weeks[w].includes(e.date)));
   const blockWeek = (w: number) => changeItems([...items.filter((e) => !weeks[w].includes(e.date) || e.status !== "UNAVAILABLE" || !whole(e)), ...weeks[w].filter((d) => d >= today).map((date): Exception => ({ date, startMin: 0, endMin: 1440, status: "UNAVAILABLE" }))]);
   function copyWeek(src: number, target: number) {
@@ -156,37 +177,24 @@ export function AvailabilityEditor({ playerId, playerName, initialSlots, initial
 
       {/* ===== PASO 2 ===== */}
       <section className="avstep" aria-labelledby="paso2">
-        <h2 id="paso2"><span className="avnum">2</span> Días en los que NO puedes <span className="subtle" style={{ fontWeight: 700 }}>(opcional)</span></h2>
-        <p className="subtle">Viajes, trabajo, lesión… Toca un día para bloquearlo y vuelve a tocarlo para desbloquearlo.</p>
+        <h2 id="paso2"><span className="avnum">2</span> Días concretos <span className="subtle" style={{ fontWeight: 700 }}>(opcional)</span></h2>
+        <p className="subtle">Marca los días en los que NO puedes jugar (viaje, trabajo, lesión…) o en los que puedes unas horas extra. <b>Toca un día</b> para ver y cambiar el suyo.</p>
+        <p className="avlegend" aria-hidden><i className="lg blocked" /> Día bloqueado <i className="lg partial" /> Bloqueo de unas horas <i className="lg extra" /> Horas extra</p>
 
         <div className="daycal" role="group" aria-label="Calendario de los próximos días">
           <div className="weekrow" aria-hidden>{WEEKDAYS.map((d) => <small key={d} className="subtle" style={{ textAlign: "center", fontWeight: 800 }}>{d.slice(0, 3)}</small>)}</div>
           {weeks.map((w, wi) => (
-            <div key={wi}>
-              {advE && (
-                <div className="weekhead">
-                  <b>Semana del {short(w[0])}</b>
-                  <button type="button" className="btn btn-outline btn-sm" onClick={() => blockWeek(wi)}>Bloquear semana</button>
-                  <button type="button" className="btn btn-outline btn-sm" onClick={() => clearWeek(wi)}>Vaciar</button>
-                  <label className="sr-only" htmlFor={`cp${wi}`}>Copiar los bloqueos de esta semana a</label>
-                  <select id={`cp${wi}`} value="" onChange={(e) => { if (e.target.value !== "") copyWeek(wi, Number(e.target.value)); }}>
-                    <option value="">Copiar a…</option>
-                    {weeks.map((x, k) => k !== wi && <option key={k} value={k}>Semana del {short(x[0])}</option>)}
-                  </select>
-                </div>
-              )}
-              <div className="weekrow">
-                {w.map((d) => (
-                  <button key={d} type="button" className={`daycell ${stateOf(d)}${sel === d && advE ? " sel" : ""}${d < today ? " past" : ""}`} disabled={d < today} onClick={() => toggleDay(d)}
-                    aria-label={`${longDate(d)}${stateOf(d) === "blocked" ? ", bloqueado" : stateOf(d) === "partial" ? ", bloqueo de unas horas" : stateOf(d) === "extra" ? ", con disponibilidad extra" : ""}`} aria-pressed={stateOf(d) === "blocked"}>
-                    <span>{Number(d.slice(8))}</span><small>{d.endsWith("-01") || d === w[0] ? MONTHS[Number(d.slice(5, 7)) - 1] : stateOf(d) === "blocked" ? "✕" : stateOf(d) === "partial" ? "◐" : stateOf(d) === "extra" ? "+" : "\u00a0"}</small>
-                  </button>
-                ))}
-              </div>
+            <div className="weekrow" key={wi}>
+              {w.map((d) => (
+                <button key={d} type="button" className={`daycell ${stateOf(d)}${d < today ? " past" : ""}`} disabled={d < today} onClick={() => openDay(d)} aria-haspopup="dialog"
+                  aria-label={`${longDate(d)}${stateOf(d) === "blocked" ? ", bloqueado" : stateOf(d) === "partial" ? ", bloqueo de unas horas" : stateOf(d) === "extra" ? ", con horas extra" : ""}`}>
+                  <span>{Number(d.slice(8))}</span><small>{d.endsWith("-01") || d === w[0] ? MONTHS[Number(d.slice(5, 7)) - 1] : stateOf(d) === "blocked" ? "✕" : stateOf(d) === "partial" ? "◐" : stateOf(d) === "extra" ? "+" : "\u00a0"}</small>
+                </button>
+              ))}
             </div>
           ))}
         </div>
-        <p className="subtle" style={{ margin: ".4rem 0 0" }}>{blockedCount === 0 ? "No tienes ningún día bloqueado." : `${blockedCount} ${blockedCount === 1 ? "día bloqueado" : "días bloqueados"}.`}</p>
+        <p className="subtle" style={{ margin: ".4rem 0 0" }}>{blockedCount === 0 ? "No tienes ningún día bloqueado entero." : `${blockedCount} ${blockedCount === 1 ? "día bloqueado entero" : "días bloqueados enteros"}.`}</p>
 
         <div className="avrange">
           <b>¿Vacaciones o un viaje largo?</b>
@@ -197,43 +205,21 @@ export function AvailabilityEditor({ playerId, playerName, initialSlots, initial
           </div>
         </div>
 
-        <details className="avadv" onToggle={(e) => { const o = (e.currentTarget as HTMLDetailsElement).open; setAdvE(o); if (!o) setSel(null); }}>
-          <summary>Más opciones: bloquear solo unas horas, añadir un día extra, copiar semanas</summary>
-          <p className="subtle" style={{ margin: ".5rem 0 0" }}>Con esto abierto, al tocar un día se abre su detalle (en lugar de bloquearlo entero) y cada semana muestra atajos para bloquearla, vaciarla o copiarla a otra.</p>
+        <details className="avadv">
+          <summary>Más opciones: bloquear una semana entera, vaciarla o copiarla a otra</summary>
+          <p className="subtle" style={{ margin: ".5rem 0" }}>Elige una semana. Estos cambios se guardan con el botón «Guardar» de abajo.</p>
+          <label htmlFor="wk">Semana</label>
+          <select id="wk" value={wk} onChange={(e) => setWk(Number(e.target.value))}>{weeks.map((w, i) => <option key={i} value={i}>Semana del {short(w[0])}</option>)}</select>
+          <div className="actions" style={{ margin: ".6rem 0" }}>
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => blockWeek(wk)}>Bloquear esa semana</button>
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => clearWeek(wk)}>Vaciar esa semana</button>
+          </div>
+          <label htmlFor="cpto">Copiar los bloqueos de esa semana a</label>
+          <select id="cpto" value="" onChange={(e) => { if (e.target.value !== "") copyWeek(wk, Number(e.target.value)); }}>
+            <option value="">Elige la semana de destino…</option>
+            {weeks.map((w, i) => i !== wk && <option key={i} value={i}>Semana del {short(w[0])}</option>)}
+          </select>
         </details>
-
-        {advE && sel && (
-          <section className="card" aria-label={`Detalle de ${longDate(sel)}`} style={{ marginTop: ".75rem" }}>
-            <h3 style={{ fontSize: "1.05rem" }}>{longDate(sel)}</h3>
-            <p className="subtle" style={{ margin: ".2rem 0 .6rem" }}>Tu semana habitual ese día: {weeklyOf(sel)}.</p>
-            {ofDate(sel).map(({ e, i }) => (
-              <div className="exrow" key={i}>
-                <div className="exline">
-                  <label className="sr-only" htmlFor={`st${i}`}>Tipo</label>
-                  <select id={`st${i}`} value={e.status} onChange={(ev) => patchEx(i, { status: ev.target.value as Exception["status"] })}>
-                    <option value="UNAVAILABLE">No puedo</option><option value="AVAILABLE">Puedo (extra)</option>
-                  </select>
-                  <label className="sr-only" htmlFor={`a${i}`}>Desde</label>
-                  <select id={`a${i}`} value={e.startMin} onChange={(ev) => patchEx(i, { startMin: Number(ev.target.value) })}>{START_OPTIONS.map((m) => <option key={m} value={m}>{fmtMin(m)}</option>)}</select>
-                  <span>a</span>
-                  <label className="sr-only" htmlFor={`b${i}`}>Hasta</label>
-                  <select id={`b${i}`} value={e.endMin} onChange={(ev) => patchEx(i, { endMin: Number(ev.target.value) })}>{END_OPTIONS.filter((m) => m > e.startMin).map((m) => <option key={m} value={m}>{fmtMin(m)}</option>)}</select>
-                  <button type="button" className="btn btn-outline btn-sm" onClick={() => changeItems(items.filter((_, k) => k !== i))} aria-label="Quitar">Quitar</button>
-                </div>
-                <div className="exline">
-                  {e.status === "AVAILABLE"
-                    ? <label className="check" style={{ margin: 0 }}><input type="checkbox" checked={Boolean(e.preferred)} onChange={(ev) => patchEx(i, { preferred: ev.target.checked })} /> ★ Preferente</label>
-                    : <><label className="sr-only" htmlFor={`n${i}`}>Nota privada</label><input id={`n${i}`} type="text" maxLength={80} placeholder="Nota privada (opcional; no la ve nadie del otro lado)" value={e.note ?? ""} onChange={(ev) => patchEx(i, { note: ev.target.value })} /></>}
-                </div>
-              </div>
-            ))}
-            <div className="actions" style={{ marginTop: ".75rem" }}>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => addEx(sel, "UNAVAILABLE", 0, 1440)}>No puedo en todo el día</button>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => addEx(sel, "UNAVAILABLE", 18 * 60, 22 * 60)}>No puedo en unas horas</button>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => addEx(sel, "AVAILABLE", 18 * 60, 22 * 60)}>Sí puedo en unas horas (extra)</button>
-            </div>
-          </section>
-        )}
       </section>
 
       {/* ===== GUARDAR ===== */}
@@ -242,6 +228,55 @@ export function AvailabilityEditor({ playerId, playerName, initialSlots, initial
         {dirty && !pending && <span className="subtle">Tienes cambios sin guardar.</span>}
         {msg && <span role={msg.ok ? "status" : "alert"} className={msg.ok ? "okmsg" : "error"} style={{ margin: 0 }}>{msg.text}</span>}
       </div>
+
+      {/* ===== VENTANA DE UN DÍA ===== */}
+      <dialog ref={dlg} className="daysheet" aria-labelledby="daysheet-title" onClose={() => setSel(null)} onClick={(e) => { if (e.target === dlg.current) setSel(null); }}>
+        {sel && (
+          <div className="daysheet-body">
+            <div className="daysheet-head">
+              <h3 id="daysheet-title">{longDate(sel)}</h3>
+              <button type="button" className="toast-x" aria-label="Cerrar sin guardar" onClick={() => setSel(null)}>×</button>
+            </div>
+            <p className="subtle" style={{ margin: ".2rem 0 .75rem" }}>Tu semana habitual ese día: {weeklyOf(sel)}.</p>
+
+            {draft.length === 0
+              ? <p className="subtle">Este día no tiene cambios: vale tu semana habitual. Añade abajo un bloqueo o unas horas extra.</p>
+              : draft.map((e, i) => (
+                <div className="exrow" key={i}>
+                  <div className="exline">
+                    <label className="sr-only" htmlFor={`st${i}`}>Tipo</label>
+                    <select id={`st${i}`} value={e.status} onChange={(ev) => patchDraft(i, { status: ev.target.value as Exception["status"] })}>
+                      <option value="UNAVAILABLE">No puedo</option><option value="AVAILABLE">Sí puedo (extra)</option>
+                    </select>
+                    <label className="sr-only" htmlFor={`a${i}`}>Desde</label>
+                    <select id={`a${i}`} value={e.startMin} onChange={(ev) => patchDraft(i, { startMin: Number(ev.target.value) })}>{START_OPTIONS.map((m) => <option key={m} value={m}>{fmtMin(m)}</option>)}</select>
+                    <span>a</span>
+                    <label className="sr-only" htmlFor={`b${i}`}>Hasta</label>
+                    <select id={`b${i}`} value={e.endMin} onChange={(ev) => patchDraft(i, { endMin: Number(ev.target.value) })}>{END_OPTIONS.filter((m) => m > e.startMin).map((m) => <option key={m} value={m}>{fmtMin(m)}</option>)}</select>
+                    <button type="button" className="btn btn-outline btn-sm" onClick={() => setDraft((d) => d.filter((_, k) => k !== i))} aria-label="Quitar">Quitar</button>
+                  </div>
+                  <div className="exline">
+                    {e.status === "AVAILABLE"
+                      ? <label className="check" style={{ margin: 0 }}><input type="checkbox" checked={Boolean(e.preferred)} onChange={(ev) => patchDraft(i, { preferred: ev.target.checked })} /> ★ Preferente</label>
+                      : <><label className="sr-only" htmlFor={`n${i}`}>Nota privada</label><input id={`n${i}`} type="text" maxLength={80} placeholder="Nota privada (opcional; no la ve nadie del otro lado)" value={e.note ?? ""} onChange={(ev) => patchDraft(i, { note: ev.target.value })} /></>}
+                  </div>
+                </div>
+              ))}
+
+            <div className="daysheet-add">
+              <button type="button" className="btn btn-outline btn-sm" disabled={hasWholeDay} onClick={() => addDraft("UNAVAILABLE", 0, 1440)}>No puedo en todo el día</button>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => addDraft("UNAVAILABLE", 18 * 60, 22 * 60)}>No puedo en unas horas</button>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => addDraft("AVAILABLE", 18 * 60, 22 * 60)}>Sí puedo en unas horas (extra)</button>
+            </div>
+            {sheetErr && <p role="alert" className="error" style={{ margin: ".75rem 0 0" }}>{sheetErr}</p>}
+
+            <div className="daysheet-foot">
+              <button type="button" className="btn btn-outline" onClick={() => setSel(null)}>Cancelar</button>
+              <button type="button" className="btn btn-navy" onClick={saveDay} disabled={pending}>{pending ? "Guardando…" : "Guardar este día"}</button>
+            </div>
+          </div>
+        )}
+      </dialog>
     </div>
   );
 }

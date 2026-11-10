@@ -334,3 +334,21 @@ button:active, .btn:active, a.chip:active { transform: scale(.98); }
 .share > summary { cursor: pointer; list-style: none; }
 .share > summary::-webkit-details-marker { display: none; }
 .share[open] > summary { margin-bottom: .25rem; }
+
+/* Ventana de un día (disponibilidad): sube desde abajo en el móvil y se centra en pantallas grandes */
+dialog.daysheet { border: 0; padding: 0; width: min(560px, 100%); max-width: 100%; max-height: 90dvh; margin: auto 0 0; border-radius: 20px 20px 0 0; background: var(--white); color: var(--ink); box-shadow: 0 -8px 30px rgba(7, 30, 71, .3); }
+dialog.daysheet::backdrop { background: rgba(7, 30, 71, .55); }
+@media (min-width: 640px) { dialog.daysheet { margin: auto; border-radius: 20px; } }
+.daysheet-body { display: flex; flex-direction: column; max-height: 90dvh; overflow-y: auto; padding: 1rem 1rem 0; }
+.daysheet-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+.daysheet-head h3 { font-size: 1.2rem; margin: 0; }
+.daysheet-head .toast-x { background: var(--mist); min-height: 2.4rem; }
+.daysheet-add { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+.daysheet-foot { position: sticky; bottom: 0; display: flex; gap: .6rem; margin-top: 1rem; padding: .75rem 0 calc(.75rem + env(safe-area-inset-bottom, 0px)); background: var(--white); border-top: 1px solid var(--line); }
+.daysheet-foot .btn { flex: 1; }
+body:has(dialog.daysheet[open]) { overflow: hidden; }
+.avlegend { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .9rem; font-size: .8rem; color: var(--ink-soft); margin: .25rem 0 .5rem; }
+.lg { display: inline-block; width: .8rem; height: .8rem; border-radius: 4px; margin-right: .25rem; vertical-align: -1px; }
+.lg.blocked { background: #fde3e5; border: 1px solid #efc3c7; }
+.lg.partial { background: #fff1d6; border: 1px solid #f0d49b; }
+.lg.extra { background: #ddf6ea; border: 1px solid #b9e6d0; }
