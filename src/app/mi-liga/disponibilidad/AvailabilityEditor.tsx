@@ -3,31 +3,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { WEEKDAYS, addDays, fmtMin, isoWeekday, normalizeExceptions, normalizeSlots, validateExceptions, validateSlots, type Exception, type Slot } from "@/lib/availability";
 import { saveAvailabilityAction, saveExceptionsAction } from "./actions";
 
-// ---------- Momentos del día (modo sencillo) ----------
-const BLOCKS = [
-  { key: "m", label: "Mañana", from: 8 * 60, to: 14 * 60 },
-  { key: "t", label: "Tarde", from: 14 * 60, to: 19 * 60 },
-  { key: "n", label: "Noche", from: 19 * 60, to: 23 * 60 },
-] as const;
-type Block = (typeof BLOCKS)[number];
-
-/** ¿Qué parte de un momento del día cubren las franjas de ese día? (sin distinguir las preferentes) */
-function coverage(slots: Slot[], wd: number, b: Block): "full" | "partial" | "off" {
-  const day = normalizeSlots(slots.filter((s) => s.weekday === wd).map((s) => ({ ...s, preferred: false })));
-  const covered = day.reduce((acc, s) => acc + Math.max(0, Math.min(s.endMin, b.to) - Math.max(s.startMin, b.from)), 0);
-  return covered >= b.to - b.from ? "full" : covered > 0 ? "partial" : "off";
-}
-const addBlock = (slots: Slot[], wd: number, b: Block): Slot[] => normalizeSlots([...slots, { weekday: wd, startMin: b.from, endMin: b.to, preferred: false }]);
-/** Quita un momento del día de las franjas, partiendo las que lo atraviesan (18–22 menos tarde → 19–22). */
-function removeBlock(slots: Slot[], wd: number, b: Block): Slot[] {
-  const out: Slot[] = [];
-  for (const s of slots) {
-    if (s.weekday !== wd || s.endMin <= b.from || s.startMin >= b.to) { out.push(s); continue; }
-    if (s.startMin < b.from) out.push({ ...s, endMin: b.from });
-    if (s.endMin > b.to) out.push({ ...s, startMin: b.to });
-  }
-  return out;
-}
+/** Horas de un día de la semana habitual, para el detalle de un día del calendario. */
 const summary = (slots: Slot[], wd: number) =>
   normalizeSlots(slots.filter((s) => s.weekday === wd).map((s) => ({ ...s, preferred: false }))).map((s) => `${fmtMin(s.startMin)}–${fmtMin(s.endMin)}`).join(" · ");
 
@@ -48,7 +24,7 @@ export function AvailabilityEditor({ playerId, playerName, initialSlots, initial
   const [dirtyW, setDirtyW] = useState(false), [dirtyE, setDirtyE] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
-  const [advW, setAdvW] = useState(false), [advE, setAdvE] = useState(false);
+  const [advE, setAdvE] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
   const [from, setFrom] = useState(""), [to, setTo] = useState("");
   const dirty = dirtyW || dirtyE;
@@ -65,8 +41,6 @@ export function AvailabilityEditor({ playerId, playerName, initialSlots, initial
   }, [dirty]);
 
   // ---------- Paso 1: semana habitual ----------
-  const toggleBlock = (wd: number, b: Block) => changeSlots(coverage(slots, wd, b) === "full" ? removeBlock(slots, wd, b) : addBlock(slots, wd, b));
-  const fill = (days: number[], blocks: readonly Block[]) => changeSlots(days.reduce((acc, wd) => blocks.reduce((a, b) => addBlock(a, wd, b), acc), slots));
   const ofDay = (wd: number) => slots.map((s, i) => ({ s, i })).filter((x) => x.s.weekday === wd).sort((a, b) => a.s.startMin - b.s.startMin);
   function addRow(wd: number) {
     const last = ofDay(wd).at(-1)?.s;
@@ -143,77 +117,41 @@ export function AvailabilityEditor({ playerId, playerName, initialSlots, initial
     });
   }
   const weeklyOf = (d: string) => summary(slots, isoWeekday(d)) || "sin franjas";
-  const total = slots.length;
 
   return (
     <div>
       {/* ===== PASO 1 ===== */}
       <section className="avstep" aria-labelledby="paso1">
         <h2 id="paso1"><span className="avnum">1</span> Tu semana habitual</h2>
-        <p className="subtle">Toca los momentos del día en los que sueles poder jugar. Puedes marcar varios.</p>
+        <p className="subtle">Para cada día, añade las horas en las que sueles poder jugar. Si no puedes algún día, déjalo sin horas. Marca ★ <b>preferente</b> las que más te convienen: se recomiendan antes.</p>
 
-        <div className="avpresets" role="group" aria-label="Atajos para rellenar rápido">
-          <button type="button" className="chip" onClick={() => fill([1, 2, 3, 4, 5], [BLOCKS[1], BLOCKS[2]])}>Tardes y noches entre semana</button>
-          <button type="button" className="chip" onClick={() => fill([6, 7], BLOCKS)}>Fines de semana</button>
-          <button type="button" className="chip" onClick={() => changeSlots([])}>Borrar todo</button>
-        </div>
-
-        <div className="avweek">
-          {WEEKDAYS.map((name, i) => {
-            const wd = i + 1, sum = summary(slots, wd);
+        <div className="avdays">
+          {WEEKDAYS.map((name, idx) => {
+            const wd = idx + 1, day = ofDay(wd);
             return (
-              <div className="avwrow" key={wd}>
-                <span className="avwday">{name}</span>
-                <div className="avwchips" role="group" aria-label={name}>
-                  {BLOCKS.map((b) => {
-                    const c = coverage(slots, wd, b);
-                    return (
-                      <button type="button" key={b.key} className={`blk ${c}`} aria-pressed={c === "full" ? true : c === "partial" ? "mixed" : false} onClick={() => toggleBlock(wd, b)}>
-                        {b.label}<small>{b.from / 60}–{b.to / 60} h</small>
-                      </button>
-                    );
-                  })}
-                </div>
-                {sum && <small className="avwsum">{sum}</small>}
-              </div>
+              <section key={wd} className="avday" aria-label={name}>
+                <div className="avhead"><h3>{name}</h3><button type="button" className="btn btn-outline btn-sm" onClick={() => addRow(wd)} disabled={day.length >= 8}>+ Añadir horas</button></div>
+                <div className="avbar" aria-hidden>{day.map(({ s, i }) => <i key={i} className={s.preferred ? "pref" : ""} style={{ left: `${(s.startMin / 1440) * 100}%`, width: `${((s.endMin - s.startMin) / 1440) * 100}%` }} />)}</div>
+                <div className="avticks" aria-hidden><span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>24h</span></div>
+                {day.length === 0 ? <p className="subtle" style={{ margin: ".4rem 0 0" }}>Sin horas (no se considera libre).</p> : day.map(({ s, i }) => (
+                  <div key={i}>
+                    <div className="avrow">
+                      <label className="sr-only" htmlFor={`f${i}`}>Desde</label>
+                      <select id={`f${i}`} value={s.startMin} onChange={(e) => updateRow(i, { startMin: Number(e.target.value) })}>{START_OPTIONS.map((m) => <option key={m} value={m}>{fmtMin(m)}</option>)}</select>
+                      <span>a</span>
+                      <label className="sr-only" htmlFor={`t${i}`}>Hasta</label>
+                      <select id={`t${i}`} value={s.endMin} onChange={(e) => updateRow(i, { endMin: Number(e.target.value) })}>{END_OPTIONS.filter((m) => m > s.startMin).map((m) => <option key={m} value={m}>{fmtMin(m)}</option>)}</select>
+                    </div>
+                    <div className="avrow2">
+                      <label className="check"><input type="checkbox" checked={Boolean(s.preferred)} onChange={(e) => updateRow(i, { preferred: e.target.checked })} /> ★ Preferente</label>
+                      <button type="button" className="btn btn-outline btn-sm" aria-label={`Quitar estas horas de ${name}`} onClick={() => changeSlots(slots.filter((_, k) => k !== i))}>Quitar</button>
+                    </div>
+                  </div>
+                ))}
+              </section>
             );
           })}
         </div>
-        <p className="subtle" style={{ margin: ".6rem 0 0" }}>{total === 0 ? "Todavía no has marcado nada." : "Si un momento aparece a medias, es que tienes unas horas concretas dentro de él."}</p>
-
-        <details className="avadv" onToggle={(e) => setAdvW((e.currentTarget as HTMLDetailsElement).open)}>
-          <summary>Ajustar las horas exactas y marcar horarios preferentes</summary>
-          <p className="subtle" style={{ margin: ".5rem 0" }}>Aquí puedes poner horas concretas (de 30 en 30 minutos). Marca ★ <b>preferente</b> las que más te convienen: se recomiendan antes.</p>
-          {advW && (
-            <div className="avdays">
-              {WEEKDAYS.map((name, idx) => {
-                const wd = idx + 1, day = ofDay(wd);
-                return (
-                  <section key={wd} className="avday" aria-label={name}>
-                    <div className="avhead"><h3>{name}</h3><button type="button" className="btn btn-outline btn-sm" onClick={() => addRow(wd)} disabled={day.length >= 8}>+ Añadir horas</button></div>
-                    <div className="avbar" aria-hidden>{day.map(({ s, i }) => <i key={i} className={s.preferred ? "pref" : ""} style={{ left: `${(s.startMin / 1440) * 100}%`, width: `${((s.endMin - s.startMin) / 1440) * 100}%` }} />)}</div>
-                    <div className="avticks" aria-hidden><span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>24h</span></div>
-                    {day.length === 0 ? <p className="subtle" style={{ margin: ".4rem 0 0" }}>Sin información (no se considera libre).</p> : day.map(({ s, i }) => (
-                      <div key={i}>
-                        <div className="avrow">
-                          <label className="sr-only" htmlFor={`f${i}`}>Desde</label>
-                          <select id={`f${i}`} value={s.startMin} onChange={(e) => updateRow(i, { startMin: Number(e.target.value) })}>{START_OPTIONS.map((m) => <option key={m} value={m}>{fmtMin(m)}</option>)}</select>
-                          <span>a</span>
-                          <label className="sr-only" htmlFor={`t${i}`}>Hasta</label>
-                          <select id={`t${i}`} value={s.endMin} onChange={(e) => updateRow(i, { endMin: Number(e.target.value) })}>{END_OPTIONS.filter((m) => m > s.startMin).map((m) => <option key={m} value={m}>{fmtMin(m)}</option>)}</select>
-                        </div>
-                        <div className="avrow2">
-                          <label className="check"><input type="checkbox" checked={Boolean(s.preferred)} onChange={(e) => updateRow(i, { preferred: e.target.checked })} /> ★ Preferente</label>
-                          <button type="button" className="btn btn-outline btn-sm" aria-label={`Quitar estas horas de ${name}`} onClick={() => changeSlots(slots.filter((_, k) => k !== i))}>Quitar</button>
-                        </div>
-                      </div>
-                    ))}
-                  </section>
-                );
-              })}
-            </div>
-          )}
-        </details>
       </section>
 
       {/* ===== PASO 2 ===== */}

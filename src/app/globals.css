@@ -314,17 +314,7 @@ button:active, .btn:active, a.chip:active { transform: scale(.98); }
 .avstep { border: 1px solid var(--line); border-radius: 16px; padding: 1rem 1rem 1.1rem; margin-bottom: 1rem; background: var(--white); }
 .avstep h2 { font-size: 1.15rem; margin: 0 0 .25rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 .avnum { display: inline-grid; place-items: center; width: 1.7rem; height: 1.7rem; border-radius: 50%; background: var(--navy); color: var(--white); font-size: .95rem; font-weight: 900; }
-.avweek { display: grid; gap: .7rem; margin-top: .75rem; }
-.avwrow { display: grid; gap: .25rem; }
-.avwday { font-weight: 900; font-size: .95rem; color: var(--navy); }
-.avwchips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem; }
-.blk { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .05rem; min-height: 50px; padding: .35rem .25rem; border-radius: 12px; border: 1.5px solid var(--line); background: var(--white); font: inherit; font-weight: 800; font-size: .9rem; color: var(--navy); cursor: pointer; }
-.blk small { font-size: .7rem; font-weight: 700; color: var(--ink-soft); }
-.blk.full { background: var(--navy); border-color: var(--navy); color: var(--white); }
-.blk.full small { color: #c9d6f2; }
-.blk.partial { background: var(--blue-soft); border-style: dashed; border-color: var(--blue); }
-.blk:focus-visible, .daycell:focus-visible { outline: 3px solid var(--mint); outline-offset: 2px; }
-.avwsum { color: var(--ink-soft); font-size: .78rem; }
+.daycell:focus-visible { outline: 3px solid var(--mint); outline-offset: 2px; }
 .avadv { margin-top: 1rem; border-top: 1px dashed var(--line); padding-top: .75rem; }
 .avadv > summary { cursor: pointer; font-weight: 800; color: var(--blue); }
 .avrange { margin-top: 1rem; background: var(--mist); border-radius: 12px; padding: .75rem .9rem; }

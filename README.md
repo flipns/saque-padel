@@ -187,7 +187,7 @@ Variables de entorno en Vercel (Settings → Environment Variables) y después *
 
 ### Disponibilidad: una sola pantalla en dos pasos
 
-`/mi-liga/disponibilidad` ya no tiene pestañas ni dos guardados. Paso 1, **semana habitual**: por cada día, tres botones (Mañana 8–14, Tarde 14–19, Noche 19–23); si hay horas concretas dentro de un momento, sale «a medias» y al tocarlo se completa. Paso 2, **días en los que no puedes**: tocar un día lo bloquea y volver a tocarlo lo desbloquea; hay bloqueo de periodos. Un solo botón guarda las dos partes (solo escribe la que ha cambiado). Las horas exactas, los horarios preferentes, bloquear solo unas horas, los días extra y copiar semanas están en desplegables («avanzado»).
+`/mi-liga/disponibilidad` ya no tiene pestañas ni dos guardados. Paso 1, **semana habitual**: cada día muestra sus horas de «desde» a «hasta» (de 30 en 30 minutos; un día puede tener varios tramos, y cada uno se puede marcar ★ preferente); un día sin horas se considera sin información. Paso 2, **días en los que no puedes**: tocar un día lo bloquea y volver a tocarlo lo desbloquea; hay bloqueo de periodos. Un solo botón guarda las dos partes (solo escribe la que ha cambiado). Bloquear solo unas horas, los días extra y copiar semanas están en «Más opciones» del paso 2. (Se quitaron los botones Mañana/Tarde/Noche y los atajos por ser redundantes con el selector de horas.)
 
 ### Pistas
 
