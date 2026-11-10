@@ -18,6 +18,7 @@ Stack: Next.js 15 (App Router) + Supabase (Postgres, Auth con magic link, RLS, p
    - `supabase/migrations/0009_phase5b_exceptions.sql` (preferencias, excepciones por fecha y avisos de cambios; solo añade y sustituye `save_availability`)
    - `supabase/migrations/0010_result_corrections.sql` (impugnar con resultado exacto, corregir y retirar resultados; solo añade y sustituye `submit_result`, `respond_result` y `audit_to_chat`). **Ejecútala antes de desplegar el código nuevo.**
    - `supabase/migrations/0011_move_pairs.sql` (mover parejas entre grupos y cambiar de categoría; solo añade dos funciones). **Ejecútala antes de desplegar el código nuevo.**
+   - `supabase/migrations/0013_time_conflicts.sql` (nadie en dos partidos a la vez y motivo al rechazar un horario; sustituye `propose_dates` y `respond_option`). **Ejecútala antes de desplegar el código nuevo.**
    - `supabase/migrations/0012_email_policy.sql` (solo se envían por email fechas propuestas, aceptadas y resultados introducidos; solo añade y sustituye `claim_pending_emails`).
    - `supabase/seed.sql` (antes cambia `cambia-esto@ejemplo.com` por tu email de administrador; si ya lo ejecutaste, no hace falta repetirlo)
    - Si `create extension pg_cron` falla, actívala en *Database → Extensions* y vuelve a ejecutar las dos últimas líneas de la migración.
@@ -214,3 +215,13 @@ Las pistas se eligen de un desplegable («Pista 1» … «Pista N»). El número
 - Botón **Compartir los próximos partidos**: genera el texto del grupo de WhatsApp de la liga con, por cada partido, día, hora, pista, categoría y las dos parejas, más un mensaje final animando a ir al club. Se puede elegir cuántos días incluir (7, 14 o todos), **editar el texto** antes de enviarlo y usar **Compartir…** (menú nativo del móvil, que incluye WhatsApp), **Copiar texto** o **Abrir WhatsApp** (`wa.me`). Usa las *negritas* de WhatsApp (`*así*`); si se pega en otro sitio se ven los asteriscos.
 - La lógica del texto está en `src/lib/share.ts` (horas y días de Madrid, con tests).
 - El texto lleva los nombres completos de las parejas, incluidos los menores. Conviene revisarlo antes de enviarlo a un grupo.
+
+### Nadie puede estar en dos partidos a la vez
+
+- Un partido dura 90 minutos. Una pareja que ya tiene otro partido **acordado o programado** (también uno con cambio de fecha en curso, que mantiene la fecha vigente) no puede **proponer** ni **aceptar** un horario que se solape con él; tampoco si el que está ocupado es el rival. Un horario que empieza justo cuando acaba el otro sí vale.
+- Cuando una pareja **acepta** una fecha, las propuestas activas de los otros partidos de **las dos parejas** que quedan pisadas se retiran solas (estado «Retirada: ya había otro partido a esa hora»); si un partido se queda sin propuestas vuelve a «sin fecha». Se avisa a las dos parejas afectadas (en la web y en el chat del partido; no por email) y la fecha ya no se sugiere en «Mejores horarios». Lo mismo ocurre si la organización fija una fecha a mano.
+- Lo garantiza la base de datos (`pair_conflict`, `_resolve_time_conflicts`), con un bloqueo por pareja: si dos aceptaciones llegan a la vez, solo una prospera y la otra recibe un aviso. 
+
+### Rechazar un horario con motivo
+
+Al rechazar un horario hay dos botones: **«No me cuadra»** y **«No hay pista»** (pide confirmación). El motivo se guarda, aparece en el historial y en la ficha del panel, se cuenta en el chat del partido y, si no queda ningún horario, en el aviso a la otra pareja. Cuando se rechaza por falta de pista, la pareja que propuso ve un aviso «Sin pista disponible» con esas horas para no volver a proponerlas.

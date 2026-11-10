@@ -8,6 +8,12 @@ import { bookingAction, changeDateAction, proposeAction, respondOptionAction, wi
 const STATE_LABEL: Record<string, string> = {
   ACTIVE: "Activa", ACCEPTED: "Aceptada", REJECTED: "Rechazada", WITHDRAWN: "Retirada", SUPERSEDED: "Descartada", EXPIRED: "Caducada",
 };
+/** Estado de una propuesta con su motivo cuando lo hay. */
+const stateText = (state: string, reason: string | null) =>
+  state === "REJECTED" && reason === "NO_COURT" ? "Rechazada: no hay pista disponible"
+  : state === "REJECTED" && reason === "NO_FIT" ? "Rechazada: no les cuadra"
+  : state === "SUPERSEDED" && reason === "CONFLICT" ? "Retirada: ya había otro partido a esa hora"
+  : STATE_LABEL[state];
 
 function DateRows({ count, min, max }: { count: number; min: string; max: string }) {
   return (
@@ -30,6 +36,7 @@ function DateRows({ count, min, max }: { count: number; min: string; max: string
 export function Scheduling({ m, options, hintsPromise, myPairId, rivalName, minDay, maxDay, bookingRef, courts }: {
   m: MatchView; options: OptionView[]; hintsPromise?: SuggestionsPromise | null; myPairId: string; rivalName: string; minDay: string; maxDay: string; bookingRef: string | null; courts: number;
 }) {
+  const noCourt = options.filter((o) => o.state === "REJECTED" && o.rejectReason === "NO_COURT" && o.pairId === myPairId && new Date(o.startsAt).getTime() > Date.now());
   const tag = (id: string) => <HintTag promise={hintsPromise} id={id} />;
   const now = Date.now();
   const live = options.filter((o) => o.state === "ACTIVE" && new Date(o.startsAt).getTime() > now);
@@ -64,6 +71,9 @@ export function Scheduling({ m, options, hintsPromise, myPairId, rivalName, minD
           <b>Cambio de fecha en curso.</b>{hasBooking && <> Sigue vigente: {fmtRange(m.scheduledAt!)} · {m.court}.</>}
         </div>
       )}
+      {noCourt.length > 0 && (m.status === "PENDING_SCHEDULE" || m.status === "SCHEDULE_PROPOSED") && (
+        <div className="callout warn"><b>Sin pista disponible</b> según {rivalName}: {noCourt.map((o) => fmtRange(o.startsAt)).join(" · ")}. No volváis a proponer esas horas.</div>
+      )}
       {m.status === "PENDING_SCHEDULE" && <div className="callout"><b>Todavía no hay fecha.</b> Proponed hasta 5 horarios: vuestros rivales aceptarán el que les venga bien.</div>}
 
       {negotiating && theirsLive.length > 0 && (
@@ -79,8 +89,12 @@ export function Scheduling({ m, options, hintsPromise, myPairId, rivalName, minD
                     <SubmitButton className="btn btn-mint btn-sm" confirm={`¿Aceptáis jugar el ${fmtDateTime(o.startsAt)}? Quedará acordado para las dos parejas.`}>Aceptar</SubmitButton>
                   </form>
                   <form action={respondOptionAction}>
-                    <input type="hidden" name="match" value={m.id} /><input type="hidden" name="option" value={o.id} /><input type="hidden" name="decision" value="reject" />
+                    <input type="hidden" name="match" value={m.id} /><input type="hidden" name="option" value={o.id} /><input type="hidden" name="decision" value="reject" /><input type="hidden" name="reason" value="NO_FIT" />
                     <SubmitButton className="btn btn-outline btn-sm">No me cuadra</SubmitButton>
+                  </form>
+                  <form action={respondOptionAction}>
+                    <input type="hidden" name="match" value={m.id} /><input type="hidden" name="option" value={o.id} /><input type="hidden" name="decision" value="reject" /><input type="hidden" name="reason" value="NO_COURT" />
+                    <SubmitButton className="btn btn-outline btn-sm" confirm={`¿Confirmas que no hay pista disponible el ${fmtDateTime(o.startsAt)}? Se lo diremos a la otra pareja.`}>No hay pista</SubmitButton>
                   </form>
                 </span>
               </li>
@@ -186,7 +200,7 @@ export function Scheduling({ m, options, hintsPromise, myPairId, rivalName, minD
             {options.map((o) => (
               <li className={`optrow${stateOf(o) === "ACTIVE" ? "" : " dim"}`} key={o.id}>
                 <span>{fmtRange(o.startsAt)}</span>
-                <span className="subtle">{o.pairId === myPairId ? "Vosotros" : rivalName} · {STATE_LABEL[stateOf(o)]}</span>
+                <span className="subtle">{o.pairId === myPairId ? "Vosotros" : rivalName} · {stateText(stateOf(o), o.rejectReason)}</span>
               </li>
             ))}
           </ul>

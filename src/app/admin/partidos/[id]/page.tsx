@@ -102,7 +102,8 @@ export default async function PartidoAdmin({ params, searchParams }: { params: P
           <h2 style={{ fontSize: "1.1rem", marginBottom: ".5rem" }}>Propuestas de fecha ({options.length})</h2>
           <ul className="proposals">
             {options.map((o) => {
-              const state = ({ ACTIVE: "Activa", ACCEPTED: "Aceptada", REJECTED: "Rechazada", WITHDRAWN: "Retirada", SUPERSEDED: "Descartada", EXPIRED: "Caducada" } as Record<string, string>)[o.state] ?? o.state;
+              const base = ({ ACTIVE: "Activa", ACCEPTED: "Aceptada", REJECTED: "Rechazada", WITHDRAWN: "Retirada", SUPERSEDED: "Descartada", EXPIRED: "Caducada" } as Record<string, string>)[o.state] ?? o.state;
+              const state = o.state === "REJECTED" && o.rejectReason === "NO_COURT" ? "Rechazada: no hay pista" : o.state === "REJECTED" && o.rejectReason === "NO_FIT" ? "Rechazada: no cuadra" : o.state === "SUPERSEDED" && o.rejectReason === "CONFLICT" ? "Retirada: otro partido a esa hora" : base;
               return (
                 <li key={o.id}>
                   <div className="prop-main"><span>{fmtRange(o.startsAt)}</span><Pill tone={o.state === "ACCEPTED" ? "ok" : o.state === "ACTIVE" ? "info" : undefined}>{state}</Pill></div>

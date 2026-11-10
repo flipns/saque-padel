@@ -176,6 +176,8 @@ export async function scheduleAction(form: FormData) {
     }
     must(await sb.from("matches").update(patch).eq("id", id));
     await audit(sb, user.email, "SCHEDULE_SET_BY_ADMIN", "match", id, { at, court });
+    // Una fecha fijada a mano también ocupa a las dos parejas: se retiran las propuestas que la pisan en sus otros partidos.
+    if (at) must(await sb.rpc("admin_resolve_time_conflicts", { p_match: id }));
     if (at) await tell(sb, season.id, m, "ADMIN_SCHEDULE", "La organización ha fijado la fecha de vuestro partido", (a, b) => `${a} contra ${b}: ${fmtDateTime(at)}${court ? ` · ${court}` : ""}.`);
     return at ? "Fecha y pista guardadas." : "Fecha quitada.";
   });

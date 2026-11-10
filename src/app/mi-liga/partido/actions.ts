@@ -102,8 +102,10 @@ export async function respondOptionAction(form: FormData) {
   const { sb } = await requirePlayer(path);
   await run(path, async () => {
     const accept = str(form, "decision") === "accept";
-    must(await sb.rpc("respond_option", { p_option: str(form, "option"), p_accept: accept }));
-    return accept ? "Fecha acordada. Ahora hay que reservar la pista y apuntarla aquí." : "Horario rechazado.";
+    const reason = accept ? null : (str(form, "reason") === "NO_COURT" ? "NO_COURT" : "NO_FIT");
+    must(await sb.rpc("respond_option", { p_option: str(form, "option"), p_accept: accept, p_reason: reason }));
+    if (accept) return "Fecha acordada. Ahora hay que reservar la pista y apuntarla aquí.";
+    return reason === "NO_COURT" ? "Horario rechazado: no hay pista disponible. Se lo decimos a la otra pareja." : "Horario rechazado.";
   });
 }
 
